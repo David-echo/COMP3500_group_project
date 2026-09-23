@@ -1,0 +1,6 @@
+# 运行期依赖
+# 说明：除 Flask 外，本项目只使用 Python 标准库（sqlite3 / hashlib / hmac / secrets / json）。
+Flask>=3.0
+
+# 开发/测试依赖（可选，仅运行测试时需要）
+#   pip3 install pytest

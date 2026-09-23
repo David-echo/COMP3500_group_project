@@ -1,0 +1,23 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+env/
+*.egg-info/
+
+# ---- 运行期生成的数据（含密钥与本地数据库，绝不提交）----
+data/
+!data/.gitkeep
+
+# ---- 编辑器 / 系统 ----
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# ---- 打包产物 ----
+*.tar.gz
+*.zip
+dist/
