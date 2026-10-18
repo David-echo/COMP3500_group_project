@@ -100,11 +100,36 @@ http.interceptors.request.use((cfg) => {
   return cfg
 })
 
+/**
+ * 提取可展示的错误信息。
+ *
+ * 后端约定所有错误的 detail 都是字符串；但为了容错，
+ * 这里也兼容 FastAPI 默认的「校验错误数组」形式，
+ * 避免页面上出现 [object Object]。
+ */
+function extractMessage(data: unknown, fallback: string): string {
+  if (typeof data === 'string' && data.trim()) return data
+  if (data && typeof data === 'object') {
+    const d = (data as { detail?: unknown }).detail
+    if (typeof d === 'string' && d.trim()) return d
+    if (Array.isArray(d)) {
+      const parts = d.map((item) => {
+        if (typeof item === 'string') return item
+        const msg = (item as { msg?: unknown })?.msg
+        return typeof msg === 'string' ? msg : ''
+      })
+      const joined = parts.filter(Boolean).join('；')
+      if (joined) return joined
+    }
+  }
+  return fallback
+}
+
 function toApiError(e: unknown): ApiError {
-  const err = e as AxiosError<{ detail?: string }>
+  const err = e as AxiosError<{ detail?: unknown }>
   const status = err.response?.status ?? 0
-  const detail = err.response?.data?.detail ?? err.message
-  return new ApiError(String(status), detail, status)
+  const message = extractMessage(err.response?.data, err.message)
+  return new ApiError(String(status), message, status)
 }
 
 /** 统一处理：成功返回 data，失败抛 ApiError */

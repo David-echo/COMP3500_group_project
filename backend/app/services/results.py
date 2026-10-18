@@ -172,11 +172,11 @@ async def publish(session: AsyncSession, election_id: int, actor: str) -> dict:
     await pubsub.get_pubsub().publish(
         pubsub.CHANNEL_RESULTS,
         {
-            "electionId": election_id,
+            "election_id": election_id,
             "status": lifecycle.PUBLISHED,
             "results": [
-                {"positionId": r["position_id"], "counts": r["counts"],
-                 "winnerIdx": r["winner_idx"], "digest": r["digest"]}
+                {"position_id": r["position_id"], "counts": r["counts"],
+                 "winner_idx": r["winner_idx"], "digest": r["digest"]}
                 for r in computed
             ],
         },

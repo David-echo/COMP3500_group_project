@@ -7,7 +7,7 @@
 import { onBeforeUnmount, ref } from 'vue'
 
 export interface TurnoutEvent {
-  electionId: number
+  election_id: number
   voted: number
   total: number
   percent: number
@@ -20,7 +20,7 @@ export function useTurnout() {
 
   function subscribe(electionId: number) {
     close()
-    es = new EventSource(`/api/v1/events/turnout?electionId=${electionId}`)
+    es = new EventSource(`/api/v1/events/turnout?election_id=${electionId}`)
 
     es.addEventListener('open', () => {
       connected.value = true

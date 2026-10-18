@@ -10,7 +10,7 @@ SSE 实时推送 (Server-Sent Events) —— 成员 4 负责
     真实选举中公布实时票数会引导后续投票行为，损害公平性。
 
 浏览器端：
-    const es = new EventSource('/api/v1/events/turnout?electionId=1')
+    const es = new EventSource('/api/v1/events/turnout?election_id=1')
     es.addEventListener('turnout', e => console.log(JSON.parse(e.data)))
 """
 
@@ -47,13 +47,13 @@ async def _stream(channel: str, event_name: str, election_id: int | None) -> Asy
 
     async def forward() -> None:
         async for msg in pub.subscribe(channel):
-            if election_id is None or msg.get("electionId") == election_id:
+            if election_id is None or msg.get("election_id") == election_id:
                 await queue.put(msg)
 
     task = asyncio.create_task(forward())
     try:
         # 首帧：告诉前端连接已建立
-        yield _format("open", {"channel": channel, "electionId": election_id})
+        yield _format("open", {"channel": channel, "election_id": election_id})
         while True:
             try:
                 msg = await asyncio.wait_for(queue.get(), timeout=heartbeat)
@@ -66,7 +66,7 @@ async def _stream(channel: str, event_name: str, election_id: int | None) -> Asy
 
 @router.get("/turnout")
 async def events_turnout(
-    election_id: int | None = Query(default=None, alias="electionId")
+    election_id: int | None = Query(default=None)
 ):
     return StreamingResponse(
         _stream(pubsub.CHANNEL_TURNOUT, "turnout", election_id),
@@ -77,7 +77,7 @@ async def events_turnout(
 
 @router.get("/results")
 async def events_results(
-    election_id: int | None = Query(default=None, alias="electionId")
+    election_id: int | None = Query(default=None)
 ):
     return StreamingResponse(
         _stream(pubsub.CHANNEL_RESULTS, "results", election_id),

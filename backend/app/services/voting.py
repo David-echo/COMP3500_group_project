@@ -197,7 +197,7 @@ async def _publish_turnout(session: AsyncSession, election_id: int) -> None:
     await pubsub.get_pubsub().publish(
         pubsub.CHANNEL_TURNOUT,
         {
-            "electionId": election_id,
+            "election_id": election_id,
             "voted": voted,
             "total": total,
             "percent": round(voted * 100.0 / total, 1) if total else 0.0,

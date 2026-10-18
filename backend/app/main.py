@@ -11,8 +11,10 @@ from __future__ import annotations
 import contextlib
 from typing import AsyncIterator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from . import config as config_module
 from .api import audit, auth, elections, events, results, votes
@@ -50,6 +52,22 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # ---------- 统一错误格式 ----------
+    # 默认情况下 FastAPI 的 422 会把 detail 返回成**数组**（Pydantic 错误列表），
+    # 而业务错误（HTTPException）的 detail 是**字符串**。
+    # 前后端约定：所有错误的 detail 一律是给人看的一句话字符串。
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        parts: list[str] = []
+        for err in exc.errors():
+            loc = [str(x) for x in err.get("loc", []) if x not in ("body", "query", "path")]
+            field = ".".join(loc) if loc else "请求参数"
+            parts.append(f"{field}: {err.get('msg', '格式不正确')}")
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            content={"detail": "；".join(parts) or "请求参数校验失败"},
+        )
 
     for r in (auth.router, elections.router, votes.router, results.router,
               audit.router, events.router):

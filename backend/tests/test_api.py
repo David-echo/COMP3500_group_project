@@ -348,3 +348,79 @@ class TestSSE:
         await bus.publish("test-channel", {"hello": "world"})
         assert await task == {"hello": "world"}
         await gen.aclose()
+
+# ==========================================================================
+# 契约一致性（前后端对接约定）
+# ==========================================================================
+
+class TestContract:
+    async def test_validation_error_detail_is_string(self, client):
+        """
+        约定：所有错误的 detail 必须是**字符串**。
+
+        FastAPI 默认会把 Pydantic 校验错误返回成数组，
+        那会让前端页面上出现 [object Object]。我们在 main.py 里统一压平。
+        """
+        r = await client.post(
+            "/api/v1/auth/register",
+            json={"student_id": "x", "password": "1"},
+        )
+        assert r.status_code == 422
+        body = r.json()
+        assert isinstance(body["detail"], str), f"detail 应为字符串，实际 {type(body['detail'])}"
+        assert "student_id" in body["detail"]
+
+    async def test_business_error_detail_is_string(self, client, setup_election):
+        s = setup_election
+        t = await login(client, s["voters"][0].student_id)
+        await client.post(
+            f"/api/v1/elections/{s['election_id']}/votes",
+            json={"position_id": s["position_id"], "choice": [0]},
+            headers=auth(t["access_token"]),
+        )
+        r = await client.post(
+            f"/api/v1/elections/{s['election_id']}/votes",
+            json={"position_id": s["position_id"], "choice": [0]},
+            headers=auth(t["access_token"]),
+        )
+        assert r.status_code == 409
+        assert isinstance(r.json()["detail"], str)
+
+    async def test_turnout_event_uses_snake_case(self, client, setup_election):
+        """约定：SSE 推送的字段与 REST 一致，使用 snake_case。"""
+        from app.services import pubsub
+
+        pubsub.reset_pubsub()
+        bus = pubsub.get_pubsub()
+        gen = bus.subscribe(pubsub.CHANNEL_TURNOUT)
+
+        async def consume():
+            return await asyncio.wait_for(gen.__anext__(), timeout=5)
+
+        task = asyncio.create_task(consume())
+        await asyncio.sleep(0.05)
+
+        s = setup_election
+        t = await login(client, s["voters"][0].student_id)
+        r = await client.post(
+            f"/api/v1/elections/{s['election_id']}/votes",
+            json={"position_id": s["position_id"], "choice": [1]},
+            headers=auth(t["access_token"]),
+        )
+        assert r.status_code == 201
+
+        msg = await task
+        assert "election_id" in msg
+        assert "electionId" not in msg
+        await gen.aclose()
+
+    async def test_sse_open_frame_uses_snake_case(self):
+        from app.api.events import _stream
+
+        gen = _stream("turnout", "turnout", 1)
+        try:
+            frame = await asyncio.wait_for(gen.__anext__(), timeout=3)
+        finally:
+            await gen.aclose()
+        assert "election_id" in frame
+        assert "electionId" not in frame
