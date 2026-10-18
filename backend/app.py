@@ -41,6 +41,9 @@ DATA_DIR = os.path.join(PROJECT_DIR, "data")
 DB_PATH = os.path.join(DATA_DIR, "election.db")
 SECRET_PATH = os.path.join(DATA_DIR, "secret.key")
 
+# ⚠️ 以下两个默认值**仅供课程演示**，任何真实部署都必须用环境变量覆盖。
+#    - TAMPER_TOKEN：仅用于「篡改演练」DEMO 端点，且该端点本身只改审计日志、可还原
+#    - SECRET_KEY  ：Flask 会话签名密钥；默认为演示值，生产环境务必设置强随机值
 TAMPER_TOKEN = os.environ.get("TAMPER_TOKEN", "TAMPER-DEMO-2026")
 
 
