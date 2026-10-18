@@ -328,7 +328,7 @@ flowchart LR
 | 后端驱动 | asyncpg | 0.29+ | PostgreSQL 异步驱动 |
 | 后端迁移 | Alembic | 1.x | 数据库版本管理 |
 | 后端服务器 | Uvicorn | 0.27+ | ASGI 服务器 |
-| 后端鉴权 | python-jose + passlib[bcrypt] | — | JWT / 密码哈希 |
+| 后端鉴权 | python-jose + bcrypt | — | JWT 签发 / 密码哈希（直接用 bcrypt） |
 | 数据库 | PostgreSQL | 16 | 主数据 + 唯一约束 |
 | 缓存 | Redis | 7 | 会话 / 缓存 / SSE 发布订阅 |
 | 测试 | pytest + pytest-asyncio + httpx | — | 单元与接口测试 |

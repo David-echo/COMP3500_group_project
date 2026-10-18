@@ -55,6 +55,79 @@ flowchart TB
 
 ---
 
+## 〇、总览图（流程 + 技术栈合一，汇报 / 发给开发者用）
+
+> 对应渲染产物：`diagrams/detailed/00-overview.png` 与 `.svg`。
+> 这张图把 5 个阶段与每段用的技术放在一起，适合一页讲完整个系统。
+
+```mermaid
+---
+title: 选举管理与投票系统 — 系统流程与技术栈（前端 Vue 3 + TypeScript ｜ 后端 Python + FastAPI）
+---
+flowchart TB
+    classDef fe fill:#e8efff,stroke:#2f5bd7,stroke-width:2px,color:#1b2438
+    classDef be fill:#e9f7ef,stroke:#0f9d58,stroke-width:2px,color:#1b2438
+    classDef db fill:#fdf0e3,stroke:#d97706,stroke-width:2px,color:#1b2438
+    classDef err fill:#fdecec,stroke:#d64545,stroke-width:1.5px,color:#a32b2b
+
+    subgraph P1["① 登录（前端 Vue 3 + TypeScript → 后端 Python + FastAPI）"]
+        direction LR
+        A1["输入学号与密码<br/>Vue 3 + TypeScript"]:::fe
+        A2["POST /auth/login<br/>Axios"]:::fe
+        A3["Pydantic 校验<br/>bcrypt 验密"]:::be
+        A4["签发 JWT<br/>python-jose"]:::be
+        A5["查 users 表<br/>SQLAlchemy async + asyncpg"]:::db
+        A1 --> A2 --> A3
+        A3 --> A5
+        A3 --> A4
+    end
+
+    subgraph P2["② 选择选举"]
+        direction LR
+        B1["GET /elections<br/>Axios + Bearer JWT"]:::fe
+        B2["Depends 校验 JWT<br/>FastAPI"]:::be
+        B3["查名册内选举<br/>asyncpg"]:::db
+        B4["渲染选举卡片<br/>Pinia + Vue Router"]:::fe
+        B1 --> B2 --> B3 --> B4
+    end
+
+    subgraph P3["③ 投票校验"]
+        direction LR
+        C1["选候选人<br/>Vue 组件"]:::fe
+        C2["POST /votes<br/>Axios"]:::fe
+        C3{"选举状态<br/>== open ?"}:::be
+        C4{"在名册内<br/>且 eligible ?"}:::be
+        X["拒绝并回滚<br/>409 ELECTION_NOT_OPEN<br/>409 DUPLICATE_VOTE"]:::err
+        C1 --> C2 --> C3 -->|是| C4
+        C3 -->|否| X
+        C4 -->|否| X
+    end
+
+    subgraph P4["④ 写入（单事务 · SQLAlchemy 2.0）"]
+        direction LR
+        C5["INSERT ballots<br/>anon_id + AES-GCM 密文"]:::db
+        C6["INSERT votes_log<br/>UNIQUE 约束仲裁"]:::db
+        C7["生成 receipt 凭证码"]:::be
+        C8["写审计日志（哈希链）"]:::be
+        C9["COMMIT"]:::db
+        C5 --> C6 --> C7 --> C8 --> C9
+    end
+
+    subgraph P5["⑤ 核验与实时"]
+        direction LR
+        D1["GET /receipts/:code<br/>Axios"]:::fe
+        D2["仅返回 counted<br/>不回传选择内容"]:::be
+        D3["EventSource 订阅<br/>/events/turnout"]:::fe
+        D4["StreamingResponse<br/>SSE 推投票率"]:::be
+        D5["Redis Pub/Sub<br/>多实例广播"]:::db
+        D1 --> D2
+        D3 --> D4 --> D5
+    end
+
+    P1 --> P2 --> P3 --> P4 --> P5
+    C4 -->|是| C5
+```
+
 ## 二、投票主流程（逐步标注语言与框架）
 
 这是**一张图讲清整个系统怎么工作**：从浏览器点击到数据落库，每一步都标明用什么技术。
@@ -64,14 +137,14 @@ flowchart TD
     Start([选民打开浏览器]) --> S1
 
     subgraph FE1["前端 · Vue 3 + TypeScript"]
-        S1["输入学号与 PIN<br/>Vue 表单 + 前端校验"]
+        S1["输入学号与密码<br/>Vue 表单 + 前端校验"]
         S1 --> S2["Axios POST /api/v1/auth/login"]
     end
 
     subgraph BE1["后端 · FastAPI"]
         S2 --> S3["Pydantic 校验请求体"]
         S3 --> S4["查询 voter_roll 表<br/>SQLAlchemy async + asyncpg"]
-        S4 --> S5{"bcrypt 校验 PIN<br/>passlib"}
+        S4 --> S5{"bcrypt 校验密码"}
         S5 -->|失败| S6["返回 401<br/>统一错误码"]
         S5 -->|成功| S7["签发 JWT<br/>python-jose"]
     end
@@ -169,9 +242,9 @@ sequenceDiagram
         RT-->>FE: 409 ELECTION_NOT_OPEN
         FE-->>V: 「该选举已截止」
     else 状态为 open
-        SC->>DB: SELECT eligible,has_voted FROM voter_roll
-        DB-->>SC: eligible=true, has_voted=false
-        SC->>SC: 加密选择（HMAC 派生密钥）
+        SC->>DB: SELECT eligible FROM voter_roll
+        DB-->>SC: eligible = true（在名册内且有资格）
+        SC->>SC: AES-256-GCM 加密选择<br/>（HKDF-SHA256 派生密钥）
         SC->>DB: INSERT INTO ballots(anon_id, choice_enc)
         SC->>DB: INSERT INTO votes_log(position_id,user_id)<br/>⚡ UNIQUE 约束在此仲裁
 
@@ -241,7 +314,7 @@ flowchart LR
 | 数据库迁移 | **Alembic** | schema 版本化，团队协作必需 |
 | 主数据库 | **PostgreSQL 16** | **唯一约束**是"一人一票"的最终保证 |
 | 缓存 | **Redis 7** | 会话 + 结果缓存 + SSE 多实例 Pub/Sub |
-| 鉴权 | **python-jose + passlib[bcrypt]** | JWT 签发与密码哈希 |
+| 鉴权 | **python-jose + bcrypt** | JWT 签发与密码哈希（bcrypt 直接调用） |
 | 测试 | **pytest + pytest-asyncio + httpx** | 单元测试 + 异步接口测试 |
 | 容器 | **Docker Compose** | 一条命令起 PostgreSQL + Redis |
 
