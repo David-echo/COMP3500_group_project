@@ -289,23 +289,52 @@ flowchart LR
 | 高并发读、会话/结果缓存 | **Redis** | 会话存储 + 热门结果缓存；也是 SSE 多实例下的消息通道（Pub/Sub） |
 | 后端语言 | **Java + Spring Boot** 或 **Python + FastAPI** | 见下表权衡 |
 
-### 3.2 后端框架权衡（关键决策，建议写进 ADR）
+### 3.2 ✅ 后端框架已定：**Python + FastAPI**
 
-| 维度 | Java + Spring Boot | Python + FastAPI |
+> 决策日期：2026-10-18　状态：Accepted
+
+| 维度 | Java + Spring Boot | **Python + FastAPI（已选）** |
 |---|---|---|
-| 事务与并发控制 | **强**：`@Transactional` + JPA 成熟，隔离级别控制细 | 较好：需自行管理 Session/事务边界 |
-| SQL 唯一约束集成 | 成熟，异常映射清晰 | 成熟（SQLAlchemy IntegrityError） |
-| 类型与接口契约 | **强**：编译期检查，适合多人协作 | 中：Pydantic 运行时校验 |
-| 开发速度（小团队） | 中：配置略重 | **快**：几行起服务 |
-| SSE 支持 | 支持（SseEmitter） | **支持（StreamingResponse）** |
-| 团队学习成本 | 较高（若无人会 Java） | **低** |
-| 部署 | 需 JVM | 轻量 |
+| 事务与并发控制 | 强：`@Transactional` + JPA 成熟 | 够用：SQLAlchemy 2.0 显式事务边界 |
+| SQL 唯一约束集成 | 成熟 | 成熟（捕获 `IntegrityError` 翻译为 409） |
+| 类型与接口契约 | 编译期检查 | Pydantic v2 运行时校验 + **自动生成 OpenAPI** |
+| 开发速度 | 中 | **快** |
+| SSE 支持 | `SseEmitter` | **`StreamingResponse`，原生简单** |
+| 团队学习成本 | 高（无人有 Java 经验） | **低** |
+| 部署 | 需 JVM | 轻量（`uvicorn`） |
 
-**建议**：
-- 若组里**有人写过 Java** → 选 **Spring Boot**，报告里可强调"企业级事务与分层架构"；
-- 若组里**以 Python 为主、只有 8 周左右开发窗口** → 选 **FastAPI**，把时间留给需求工程与测试（这两项才占分）。
+**选择理由（写进报告的版本）**
 
-> 不选 Django 的理由（团队已给出且成立）：封装重、学习曲线长、扩展不灵活；对"以 API 为中心 + 前后端分离"的项目，FastAPI 更直接。
+1. 团队已有 Python 基础，学习成本最低，时间留给需求工程与测试；
+2. Pydantic 模型直接充当**接口契约**，自动产出 OpenAPI 文档，前后端不易对不齐；
+3. SSE 用 `StreamingResponse` 即可，不引入额外依赖；
+4. 异步 IO 契合"大量短投票请求 + 长连接 SSE"的负载特征；
+5. **关键**：一人一票的最终保证由**数据库唯一约束**承担，不依赖框架；因此放弃 Spring Boot 的事务优势影响有限。
+
+**配套技术栈（全表）**
+
+| 层次 | 技术 | 版本 | 用途 |
+|---|---|---|---|
+| 前端 | Vue 3 + TypeScript | 3.4+ / 5.x | 单页应用 |
+| 前端构建 | Vite | 5.x | 开发服务器与打包 |
+| 前端状态 | Pinia | 2.x | 登录态与选举数据 |
+| 前端路由 | Vue Router | 4.x | 页面切换 |
+| 前端图表 | ECharts | 5.x | 计票结果可视化 |
+| 前端请求 | Axios | 1.x | REST 调用 |
+| 实时推送 | 浏览器 `EventSource` | 原生 | 订阅 SSE |
+| 后端 | Python + FastAPI | 3.11+ / 0.110+ | REST API |
+| 后端校验 | Pydantic | v2 | 请求/响应模型 |
+| 后端 ORM | SQLAlchemy | 2.0（async） | 事务与数据访问 |
+| 后端驱动 | asyncpg | 0.29+ | PostgreSQL 异步驱动 |
+| 后端迁移 | Alembic | 1.x | 数据库版本管理 |
+| 后端服务器 | Uvicorn | 0.27+ | ASGI 服务器 |
+| 后端鉴权 | python-jose + passlib[bcrypt] | — | JWT / 密码哈希 |
+| 数据库 | PostgreSQL | 16 | 主数据 + 唯一约束 |
+| 缓存 | Redis | 7 | 会话 / 缓存 / SSE 发布订阅 |
+| 测试 | pytest + pytest-asyncio + httpx | — | 单元与接口测试 |
+| 容器化 | Docker Compose | — | 本地一键起 PG + Redis |
+
+> 不选 Django：封装重、学习曲线长、扩展不灵活。不选 Flask：缺异步与内建校验，Pydantic/OpenAPI 都要自己接。
 
 ### 3.3 架构建议：用课程给的应用架构，而不是自己发明
 
