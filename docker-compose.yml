@@ -1,0 +1,48 @@
+# 本地一键拉起 PostgreSQL + Redis（生产环境请自行管理，不要用它）
+#
+# 用法:
+#   docker compose up -d
+#   docker compose ps
+#   docker compose down          # 停止
+#   docker compose down -v       # 停止并删除数据卷
+#
+# 注意：本机若没有 Docker，可直接用 SQLite 跑开发环境
+#       （见 .env.example 的 DATABASE_URL 注释）
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: election-postgres
+    environment:
+      POSTGRES_USER: election
+      POSTGRES_PASSWORD: election
+      POSTGRES_DB: election
+      # 中文排序/编码
+      LANG: C.UTF-8
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U election -d election"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: election-redis
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
+  redisdata:

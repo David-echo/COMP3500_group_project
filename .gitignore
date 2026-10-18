@@ -1,23 +1,46 @@
-# ---- Python ----
+# ============================================================
+# 一个仓库里有两套代码：
+#   backend/ frontend/   → 正式版（FastAPI + Vue 3）
+#   prototype/           → 早期探索原型（Flask + SQLite，仅作历史留存）
+# 下面的规则对两套都生效。
+# ============================================================
+
+# ---------- Python ----------
 __pycache__/
 *.py[cod]
-.pytest_cache/
 .venv/
 venv/
 env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 *.egg-info/
 
-# ---- 运行期生成的数据（含密钥与本地数据库，绝不提交）----
+# ---------- 运行期数据（数据库、密钥，绝不提交）----------
 data/
 !data/.gitkeep
+*.db
+*.db-wal
+*.db-shm
+*.sqlite3
+*.key
 
-# ---- 编辑器 / 系统 ----
+# ---------- 环境变量（含密钥）----------
+.env
+.env.local
+
+# ---------- 前端 ----------
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
+# ---------- 编辑器 / 系统 ----------
 .DS_Store
 .idea/
 .vscode/
 *.swp
 
-# ---- 打包产物 ----
+# ---------- 打包产物 ----------
 *.tar.gz
 *.zip
-dist/

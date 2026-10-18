@@ -1,239 +1,193 @@
-# 🗳️ 选举管理与投票系统 (Election Management & Voting System)
+# 选举管理与投票系统 (Election Management & Voting System)
 
 > COMP 3500SEF / 8500SEF / S350F — 软件工程 小组项目
 > 选题 2：Election Management and Voting System
 
-一个**可运行、可测试、可审计**的选举系统。本项目的工程重点不是界面，而是
-把选举领域最核心的矛盾 —— **「匿名性」与「可审计性」** —— 用架构手段解决掉。
+一个**可运行、可测试、可审计**的选举系统。工程重点不是界面，而是解决选举领域最核心的矛盾：
+
+> **匿名性要求查不出谁投了谁，可审计性又要求能查出有没有人作弊 —— 这两个要求互相打架。**
+
+我们用**数据结构**和**数据库约束**同时满足它们，而不是靠"我们承诺不去查日志"。
 
 ---
 
-## 🚀 快速开始
+## 一、技术栈
 
-**环境要求**：Python 3.10+（仅需标准库 + Flask）
+| 层次 | 技术 | 说明 |
+|---|---|---|
+| 前端 | **Vue 3 + TypeScript** | Vite · Pinia · Vue Router · ECharts · Axios |
+| 实时推送 | **SSE（Server-Sent Events）** | 浏览器 `EventSource` ↔ FastAPI `StreamingResponse` |
+| 后端 | **Python 3.11+ + FastAPI** | Pydantic v2 · SQLAlchemy 2.0 (async) · Uvicorn |
+| 数据库 | **PostgreSQL 16** | 唯一约束 + 事务保证"一人一票" |
+| 缓存 | **Redis 7** | 会话 / 结果缓存 / SSE 多实例发布订阅 |
+
+> 开发环境无 PostgreSQL / Redis 时自动回退到 **SQLite + 进程内发布订阅**，
+> 功能完全一致，只是不支持多实例部署。切换只需改 `.env` 一行。
+
+---
+
+## 二、快速开始
+
+### 后端（无需安装数据库）
 
 ```bash
-# 1. 安装依赖
-pip3 install flask
-
-# 2. 启动（首次运行会自动建库并生成演示数据）
 cd backend
-python3 app.py
+pip install -r requirements.txt
+python -m app.seed                    # 生成演示数据
+uvicorn app.main:app --reload --port 8770
 ```
 
-打开 **http://localhost:8767**
+- API 文档：**http://127.0.0.1:8770/docs**（FastAPI 自动生成，可在线调试）
 
-| 角色 | 入口 | 账号 | 密码 |
-|---|---|---|---|
-| 选民 | 首页直接登录 | 页面「演示辅助」面板可一键填入 | `1234` |
-| 管理员 | 右上角 **⚙️ 设置 → 管理员登录** | `admin` | `admin123` |
-
-> **投票流程是 4 步**：`选民登录` → `选择要参与的选举` → `选择候选人` → `确认投票`。
-> 登录时**不需要**先选选举 —— 先认证身份，再由系统列出你有权参与的全部选举。
->
-> 管理员入口刻意收进设置菜单，避免干扰绝大多数来投票的选民用户。
-> 演示辅助面板（可用选民池）默认隐藏，可在 ⚙️ 设置里打开。
-
-> 端口可用环境变量覆盖：`PORT=9000 python3 app.py`
-
-**可用选民池**：启动时会自动保证每个「进行中」的选举至少留有 **5 名未投票选民**
-（`MIN_AVAILABLE_VOTERS`），方便多人同时测试；不足会自动补齐且幂等。
-
-### 运行测试
+### 前端
 
 ```bash
-python3 -m pytest tests/ -v                 # 全部 57 个测试
-python3 -m pytest tests/ -v -k Concurrency  # 只看并发测试
+cd frontend
+npm install
+npm run dev                           # http://localhost:5173
 ```
 
-### 独立校验审计链
+> Vite 已配置 `/api` 代理到 `127.0.0.1:8770`，打开 5173 即可，无需处理跨域。
 
-```bash
-python3 tools/verify_audit.py               # 默认数据库
-python3 tools/verify_audit.py --json        # 机器可读
-# 退出码 0=完整  1=链已断裂  2=无法读取
-```
+### 演示账号
 
----
-
-## ⚠️ 安全说明（务必阅读）
-
-本项目是**课程演示项目**，其中若干默认值**仅供本地演示**，投入真实使用前必须替换：
-
-| 项目 | 默认值 | 说明 |
+| 角色 | 学号 | 密码 |
 |---|---|---|
-| 管理员密码 | `admin123` | 演示账号，写在 README 里公开可见 |
-| 选民 PIN | `1234` | 所有演示选民共用同一 PIN |
-| `SECRET_KEY` | 代码内默认字符串 | Flask 会话签名密钥，**生产必须**用环境变量覆盖 |
-| `TAMPER_TOKEN` | `TAMPER-DEMO-2026` | 仅用于「篡改演练」演示端点 |
+| 管理员 | `ADMIN001` | `admin12345` |
+| 审计员 | `AUDIT001` | `audit12345` |
+| 选民 | `HK100000` – `HK100029`（共 30 个） | `voter12345` |
 
-**不会进入仓库的敏感文件**（已在 `.gitignore` 中排除）：
-- `data/secret.key` —— 由程序首次启动时随机生成（权限 `0600`），用于派生选票加密密钥
-- `data/election.db` —— 本地 SQLite 数据库
+### 切换到 PostgreSQL + Redis
 
-> 也正因如此，**克隆仓库后首次运行会自动生成全新的密钥与演示数据**，不会泄漏任何既有数据。
-
-**已知的保证边界**（详见下文）：哈希链只能**检测**篡改，不能防止能重算整条链的攻击者；
-选票加密是应用层对称加密，**不是**端到端可验证加密。请勿将其描述为"不可攻破"。
-
-生产环境部署还应：更换 WSGI 服务器（gunicorn/uWSGI）、启用 HTTPS、
-将 SQLite 换成 PostgreSQL、并关闭 `/api/demo/*` 这些演示端点。
+```bash
+docker compose up -d                  # 起 PostgreSQL 16 + Redis 7
+cp .env.example .env                  # 按需修改 DATABASE_URL / REDIS_URL
+cd backend && python -m app.seed
+```
 
 ---
 
-## 🏗️ 架构（4 层，依赖单向向内）
+## 三、目录结构
 
 ```
-frontend/index.html     表现层：选民端 / 管理台 / 凭证核验（单页，ECharts）
-        ↓ HTTP
-backend/app.py          Web 层：路由、鉴权(RBAC)、错误翻译（不写业务逻辑）
-        ↓
-backend/service.py      领域服务：投票事务、计票、凭证核验、不变量检查
-        ↓
-backend/db.py           持久化：SQLite + schema + 约束
-backend/domain/         纯逻辑：状态机 / 哈希链 / 计票策略（不依赖 Flask 与 DB）
+.
+├── backend/                  正式版后端（FastAPI）
+│   ├── app/
+│   │   ├── main.py             应用组装（不写业务逻辑）
+│   │   ├── config.py           唯一读取环境变量的地方
+│   │   ├── db.py               异步引擎与会话
+│   │   ├── models.py           ORM 模型 + 唯一约束
+│   │   ├── schemas.py          Pydantic 请求/响应（自动 OpenAPI）
+│   │   ├── security.py         bcrypt / JWT / AES-GCM 选票加密
+│   │   ├── deps.py             鉴权依赖（角色控制）
+│   │   ├── domain/             纯逻辑：状态机 / 哈希链 / 计票策略
+│   │   ├── services/           投票 / 结果 / 审计 / 发布订阅
+│   │   ├── api/                auth / elections / votes / results / audit / events
+│   │   └── seed.py             演示数据
+│   ├── tests/                  40 个测试
+│   └── requirements.txt
+├── frontend/                 正式版前端（Vue 3 + TypeScript）
+│   └── src/
+│       ├── views/              4 步流程 + 管理台
+│       ├── stores/             Pinia 登录态
+│       ├── composables/        SSE 订阅
+│       └── api.ts              REST 客户端与类型定义
+├── docs/                     项目文档
+│   ├── 01-project-plan.md      业务流程 / 功能拆解 / 技术选型
+│   ├── 02-flowchart-with-tech-stack.md
+│   ├── diagrams/               流程与架构图（simple 白话版 / detailed 详细版）
+│   └── templates/              SRS / ADR / API 契约 / 会议纪要模板
+├── prototype/                早期探索原型（Flask + SQLite，仅作历史留存）
+├── docker-compose.yml        PostgreSQL + Redis
+└── .env.example
 ```
 
-**为什么这样分层？** 因为 `domain/` 不依赖框架，所以核心逻辑可以被纯单元测试
-完全覆盖 —— 这是"可测试性"的架构决策，而不是事后补测试。
+> `prototype/` 是项目早期用 Flask + SQLite 快速做的可运行原型，
+> 作用是在正式开发前验证"这个选题长什么样"（对应课程 Lecture 2 的原型法）。
+> 它**不是**最终交付代码，保留是为了记录开发过程。
 
 ---
 
-## 🔐 两个核心架构决策
+## 四、两个核心设计
 
-### 决策 1：选票与选民册**物理隔离**
+### ① 匿名性：选票与选民册**物理隔离**
 
 ```
-voter_roll                          ballots
-──────────────                      ──────────────────────
-voter_id   (谁)                     ballot_id
-has_voted                           anon_id      ← 与选民无关的随机值
-voted_at                            choice_enc   ← 加密的选择
-                                    ※ 没有 voter_id
-※ 没有 ballot_id
-                          receipts
-                          ──────────────────────
-                          receipt_code ← 只发给选民本人
-                          ballot_id / anon_id
+voter_roll   谁投了      user_id / has_voted      ※ 没有 ballot_id
+ballots      投了什么    anon_id / choice_enc     ※ 没有 user_id
+receipts     凭证        code → 只发给选民本人
+votes_log    一人一票    UNIQUE(position_id, user_id)
 ```
 
-`ballots` 表里**没有** `voter_id`；`voter_roll` 表里**没有** `ballot_id`。
-两表唯一的桥梁是只交给选民本人的凭证码。
+系统里**不存在**任何能把"某选民"与"其选择"关联起来的字段或外键。
+匿名性不是承诺，而是数据模型里没有这条边 —— 这一点有测试直接断言表结构。
 
-**结论**：系统在任何时刻都**无法**把"某个选民"与"投了什么"关联起来。
-这不是"我们承诺不查日志"，而是数据模型里根本不存在这条边 —— 可论证、可测试。
+### ② 一人一票：由**数据库唯一约束**仲裁
 
-### 决策 2：唯一性由**数据库**强制，而非应用层自觉
+投票时**不写**"先查询是否已投票，再插入"（check-then-act，并发下会双投），
+而是直接插入带 `UNIQUE(position_id, user_id)` 的记录，让数据库裁决。
 
-```sql
-UNIQUE (position_id, voter_id)   -- votes_log
-```
-
-投票时**不**使用 "先 SELECT 检查 has_voted，再 UPDATE"（那是 check-then-act，
-并发下会双投），而是直接 INSERT 带唯一约束的记录，**让数据库裁决**。
-并发时只有一个事务能成功。
-
-> 这一条正是从一个真实缺陷反推出来的设计：本课程另一份物流原型中，
-> `/api/dispatch` 直接赋值 `order['status']='picked'` 绕过了状态机校验，
-> 导致已取消订单能被"复活"。所以本系统把所有状态变更收口到
-> `domain/lifecycle.py` 的唯一入口。
+并发测试证明：同一选民并发提交 8 次，**恰好 1 次成功**。
 
 ---
 
-## ⛓️ 可验证的防篡改：哈希链审计
+## 五、SSE 实时推送的约束
 
-每条审计记录覆盖 `(prev_hash, seq, op, actor, payload, ts)`：
+| 频道 | 内容 | 何时可推送 |
+|---|---|---|
+| `/api/v1/events/turnout` | 投票率（聚合值） | 投票进行中 |
+| `/api/v1/events/results` | 各候选人票数 | **仅选举截止后** |
 
-```
-entry_n = SHA256( entry_{n-1}.hash ‖ seq ‖ op ‖ actor ‖ payload ‖ ts )
-```
-
-改动任意一条 → 其后所有记录的 `prev_hash` 对不上 → 校验精确定位断裂点。
-
-**现场演示（3 步）**：管理台 → 「审计链与篡改演练」标签页 →
-点「⚠️ 模拟篡改一条记录」→ 立即看到链变红并定位到具体序号 → 点「✅ 还原」。
-
-**保证边界（诚实声明）**
-- ✅ 能防：掌握数据库写权限、但不重算整条链的攻击者
-- ❌ 不能防：能同时重算整条链的攻击者 —— 除非把链尾哈希对外公示做外部锚定
-- 本项目**不声称**"不可攻破"，只声称"防篡改**可检测**"
+> 真实选举在投票期间不公布各候选人票数 —— 公布会引导后续投票行为，损害公平性。
+> 这一条写进领域需求（DR-1），前后端都遵守：投票期间后端**不提供**票数接口，
+> 前端即使想显示也拿不到数据。
 
 ---
 
-## 📊 计票策略（设计模式 + 演化）
+## 六、测试
 
-`domain/tally.py` 用**策略模式**实现可插拔计票：
+```bash
+cd backend
+pytest -q                        # 40 个测试
+pytest tests/test_api.py -q      # 接口与集成
+```
 
-| 策略 | 说明 |
+| 层次 | 覆盖内容 |
 |---|---|
-| `FPTPStrategy` | 单选制，v1 实现 |
-| `IRVStrategy` | 排序复选制，**演化阶段加入** |
-
-新增计票法只需新增一个类并注册，**投票、存储、公示代码零改动** ——
-这是报告中「软件演化」章节的直接证据：*"为什么当初的架构让这次演化只改了 1 个文件"*。
+| 领域层 | 状态机全部迁移、FPTP / IRV 计票、哈希链篡改与删除检测 |
+| 接口层 | 登录、投票、重复投票、凭证核验、状态门控、越权访问 |
+| 不变量 | 选票数 == 投票记录数 == 凭证数 |
+| 并发 | 同一选民并发投票只有 1 票成功 |
+| SSE | 协议头、首帧格式、发布订阅投递 |
 
 ---
 
-## ✅ 测试策略（对应 Topic 8）
+## 七、API 一览（完整文档见 `/docs`）
 
-| 层次 | 覆盖内容 | 数量 |
+| 方法 | 路径 | 说明 |
 |---|---|---|
-| 单元测试 | 状态机全部迁移、计票规则、哈希链篡改/删除/序号断裂 | 26 |
-| 业务测试 | 重复投票、越界候选、无资格选民、密文篡改、凭证不泄漏选择 | 10 |
-| 性质测试 | 随机投票序列后不变量恒成立；种子数据集全量校验 | 3 |
-| **并发测试** | **20 线程抢投同一选民 → 恰好 1 票成功** | 2 |
-| 端到端 | HTTP 登录/投票/凭证、结果门控、RBAC、篡改演练、**登录不依赖选举** | 10 |
-| | **合计** | **57** |
-
-关键的一组：
-
-```
-TestConcurrency::test_concurrent_duplicate_votes_only_one_succeeds
-  20 个线程、各自独立数据库连接、Barrier 同步后同时投票
-  断言：恰好 1 个成功，19 个收到"重复投票"
-```
-
----
-
-## 📁 目录结构
-
-```
-election-system/
-├── backend/
-│   ├── app.py              Web 层（Flask）
-│   ├── service.py          领域服务（投票/计票/核验，不依赖 Flask）
-│   ├── db.py               持久化 + schema + 约束
-│   ├── crypto.py           选票加密 / 凭证码 / 密钥派生
-│   ├── seed.py             演示数据
-│   └── domain/
-│       ├── lifecycle.py    选举状态机
-│       ├── hashchain.py    哈希链审计
-│       └── tally.py        计票策略（FPTP / IRV）
-├── frontend/index.html     单页界面（ECharts 图表）
-├── tests/                  57 个测试
-├── tools/verify_audit.py   独立审计校验工具
-└── data/                   SQLite 数据库 + 密钥（运行时生成，勿提交）
-```
+| POST | `/api/v1/auth/register` | 注册 |
+| POST | `/api/v1/auth/login` | 登录，返回 JWT |
+| GET | `/api/v1/auth/me` | 当前用户 |
+| GET | `/api/v1/elections` | 可参与的选举列表 |
+| POST | `/api/v1/elections` | 创建选举（管理员） |
+| PATCH | `/api/v1/elections/{id}/status` | 状态变更（仅状态机允许的迁移） |
+| POST | `/api/v1/elections/{id}/votes` | 投票 |
+| GET | `/api/v1/receipts/{code}` | 凭证核验（不返回选择内容） |
+| GET | `/api/v1/elections/{id}/results` | 结果（截止后才公开） |
+| POST | `/api/v1/elections/{id}/results/publish` | 计票并公示（管理员） |
+| GET | `/api/v1/elections/{id}/integrity` | 完整性不变量校验 |
+| GET | `/api/v1/audit/verify` | 审计哈希链校验 |
+| GET | `/api/v1/events/turnout` | SSE：投票率 |
+| GET | `/api/v1/events/results` | SSE：结果（仅截止后） |
 
 ---
 
-## 🔎 演示脚本（评审现场建议流程）
+## 八、诚实声明（保证边界）
 
-1. **投票**：登录 → 选择候选 → 确认 → 拿到凭证码
-2. **核验**：输入凭证码 → "已计入且未被修改"；同时指出**凭证不显示选择**
-3. **防重复**：再次投票 → 被拒（并说明这是数据库唯一约束，不是前端限制）
-4. **完整性**：管理台 → 「完整性校验」→ 三项不变量全通过
-5. **计票**：把「环保政策公投」计票 → 展示 IRV 逐轮淘汰与结果摘要哈希
-6. **篡改演练**：模拟篡改 → 链立刻断裂并定位 → 还原
-7. **独立复核**：命令行跑 `tools/verify_audit.py`，绕开应用验证
-
----
-
-## ⚠️ 已知边界与后续演化
-
-- 选票加密是**应用层对称加密**，用于防止"只读数据库者直接看到选择"；
-  **不是**端到端可验证加密（如同态计票），不声称达到真实选举的密码学强度
-- 密钥存于 `data/secret.key`（权限 0600）。真实部署应使用 KMS/HSM
-- 未实现：真实身份核验、纸质票、多轮投票、无障碍审计（WCAG 完整合规）、
-  第三方复算工具、链尾哈希外部锚定
-- 生产部署应换用 WSGI 服务器（gunicorn/uWSGI），当前 Flask 开发服务器仅用于演示
+- **选票加密**是应用层 AES-GCM，用于防止"只读数据库的人直接看到选择"；
+  **不是**端到端可验证加密（如 Paillier 同态计票），不声称达到真实选举的密码学强度。
+- **哈希链**只能**检测**篡改，不能防止能重算整条链的攻击者 ——
+  除非把链尾哈希对外公示做外部锚定。
+- 当前使用 JWT 认证；真实选举通常还需多因素认证与硬件令牌。
+- 生产部署需启用 HTTPS、更换 ASGI 服务器配置、关闭 `/docs`。
