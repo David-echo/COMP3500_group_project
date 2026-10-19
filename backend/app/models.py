@@ -8,8 +8,11 @@
 --------------------------------------------------
     voter_roll  : 记录「谁投了」   → 有 user_id，**没有 ballot_id**
     ballots     : 记录「投了什么」  → 有 anon_id，**没有 user_id**
-    receipts    : 唯一桥梁          → 凭证码只发给选民本人
+    votes_log   : 一人一票仲裁     → 有 user_id，**没有 ballot_id / receipt_code / anon_id**
+    receipts    : 凭证             → 有 ballot_id，**没有 user_id**（凭证码只发给选民本人）
+    audit_log   : 审计             → ballot.cast 记录只含 user_id，**不含任何选票标识**
 
+任何一张表都不同时持有「选民身份」与「选票标识」，
 因此系统在任何时刻都不存在可关联「某选民」与「其选择」的字段或外键。
 这不是"我们承诺不查日志"，而是数据模型里根本没有这条边。
 
@@ -158,6 +161,8 @@ class VotesLog(Base):
     """
     投票记录：唯一约束在此仲裁"一人一票"。
     只记录「某人在某职位投过」，不记录选择（选择在 ballots）。
+    **同样不含 ballot_id / receipt_code / anon_id**：
+    否则本表会成为「选民 → 选票」的关联边，破坏匿名性（见 ADR-001）。
     """
 
     __tablename__ = "votes_log"
@@ -166,7 +171,6 @@ class VotesLog(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     position_id: Mapped[int] = mapped_column(ForeignKey("positions.id", ondelete="CASCADE"), index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    ballot_id: Mapped[int] = mapped_column(ForeignKey("ballots.id", ondelete="CASCADE"))
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 

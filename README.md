@@ -84,7 +84,7 @@ cd backend && python -m app.seed
 │   │   ├── services/           投票 / 结果 / 审计 / 发布订阅
 │   │   ├── api/                auth / elections / votes / results / audit / events
 │   │   └── seed.py             演示数据
-│   ├── tests/                  40 个测试
+│   ├── tests/                  49 个测试用例
 │   └── requirements.txt
 ├── frontend/                 正式版前端（Vue 3 + TypeScript）
 │   └── src/
@@ -115,11 +115,16 @@ cd backend && python -m app.seed
 ```
 voter_roll   谁投了      user_id / has_voted      ※ 没有 ballot_id
 ballots      投了什么    anon_id / choice_enc     ※ 没有 user_id
-receipts     凭证        code → 只发给选民本人
-votes_log    一人一票    UNIQUE(position_id, user_id)
+receipts     凭证        ballot_id + code         ※ 没有 user_id，凭证码只发给选民本人
+votes_log    一人一票    UNIQUE(position_id, user_id)  ※ 没有 ballot_id / receipt_code / anon_id
+audit_log    审计        ballot.cast 只记 user_id      ※ 不含任何选票标识（守卫强制）
 ```
 
-系统里**不存在**任何能把"某选民"与"其选择"关联起来的字段或外键。
+系统里**不存在**任何能把"某选民"与"其选择"关联起来的字段或外键：
+任何一张表都不同时持有「选民身份」与「选票标识」。
+审计层还有一道**组合守卫**——payload 同时出现 `user_id` 与
+`ballot_id / anon_id / receipt_code` 会直接被拒绝写入，
+防止哈希链日志成为不可撤销的「选民 ↔ 选票」对照表。
 匿名性不是承诺，而是数据模型里没有这条边 —— 这一点有测试直接断言表结构。
 
 ### ② 一人一票：由**数据库唯一约束**仲裁
@@ -148,7 +153,7 @@ votes_log    一人一票    UNIQUE(position_id, user_id)
 
 ```bash
 cd backend
-pytest -q                        # 40 个测试
+pytest -q                        # 49 个测试用例
 pytest tests/test_api.py -q      # 接口与集成
 ```
 
