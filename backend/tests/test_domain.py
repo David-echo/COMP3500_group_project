@@ -122,3 +122,27 @@ class TestHashChain:
     def test_forbidden_choice_field_rejected(self):
         with pytest.raises(ValueError):
             hashchain.assert_no_forbidden_keys({"choice": [1]})
+
+    def test_identity_plus_ballot_link_rejected(self):
+        """同条记录同时出现选民身份与选票标识 → 拒绝写入。"""
+        with pytest.raises(ValueError):
+            hashchain.assert_no_forbidden_keys(
+                {"user_id": 1, "ballot_id": 42}
+            )
+        with pytest.raises(ValueError):
+            hashchain.assert_no_forbidden_keys(
+                {"user_id": 1, "receipt_code": "ABCD-EFGH-JKLM"}
+            )
+
+    def test_ballot_link_alone_allowed(self):
+        """无身份字段的 ballot_id（如 tally.ballot_rejected）是匿名的，允许。"""
+        hashchain.assert_no_forbidden_keys(
+            {"ballot_id": 42, "position_id": 1, "reason": "密文校验失败"}
+        )
+
+    def test_identity_plus_nested_ballot_link_rejected(self):
+        """关联字段藏在嵌套结构里也要被抓住。"""
+        with pytest.raises(ValueError):
+            hashchain.assert_no_forbidden_keys(
+                {"user_id": 1, "detail": {"refs": [{"anon_id": "abc"}]}}
+            )

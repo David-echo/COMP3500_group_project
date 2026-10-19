@@ -31,6 +31,12 @@ FORBIDDEN_KEYS = {
     "ballot_choice",
 }
 
+# 选票标识字段：允许单独出现（如 tally.ballot_rejected，本身是匿名的），
+# 但**不得**与选民身份字段（user_id / student_id）出现在同一条 payload 中，
+# 否则该条记录即成为「选民 ↔ 选票」的关联边。
+BALLOT_LINK_KEYS = {"ballot_id", "anon_id", "receipt_code"}
+IDENTITY_KEYS = {"user_id", "student_id"}
+
 
 def canonical(payload: Any) -> str:
     """确定性序列化：与字典键顺序无关。"""
@@ -51,6 +57,32 @@ def assert_no_forbidden_keys(payload: Any) -> None:
         raise ValueError(
             f"审计日志禁止包含投票选择字段 {sorted(bad)}：这会破坏选票匿名性"
         )
+    # 组合守卫：选民身份 + 选票标识不得同条出现（嵌套 payload 递归检查）
+    if _has_identity(payload) and _has_ballot_link(payload):
+        raise ValueError(
+            "审计日志禁止在同一条记录中同时包含选民身份字段与选票标识字段"
+            f"（{sorted(IDENTITY_KEYS)} × {sorted(BALLOT_LINK_KEYS)}）："
+            "这会形成「选民 ↔ 选票」的永久关联边，破坏匿名性"
+        )
+
+
+def _iter_flat_keys(payload: Any):
+    """深度优先遍历嵌套 dict / list 中的所有键名。"""
+    if isinstance(payload, dict):
+        for k, v in payload.items():
+            yield str(k)
+            yield from _iter_flat_keys(v)
+    elif isinstance(payload, list):
+        for item in payload:
+            yield from _iter_flat_keys(item)
+
+
+def _has_identity(payload: Any) -> bool:
+    return any(k in IDENTITY_KEYS for k in _iter_flat_keys(payload))
+
+
+def _has_ballot_link(payload: Any) -> bool:
+    return any(k in BALLOT_LINK_KEYS for k in _iter_flat_keys(payload))
 
 
 @dataclass(frozen=True)
