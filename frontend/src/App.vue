@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from './stores/auth'
+import hkmuLogo from './assets/hkmu-logo.png'
 
 const auth = useAuth()
 const router = useRouter()
+const route = useRoute()
 
 onMounted(() => auth.restore())
 
@@ -12,36 +14,197 @@ function logout() {
   auth.logout()
   router.push('/login')
 }
+
+const navItems = [
+  { to: '/elections', label: '选举' },
+  { to: '/receipt', label: '凭证核验' },
+]
 </script>
 
 <template>
-  <header>
-    <div>
-      <h1>🗳️ 选举管理与投票系统</h1>
-    </div>
-    <div class="row">
-      <span v-if="auth.user" class="chip">{{ auth.user.name }}（{{ auth.user.role }}）</span>
-      <router-link v-if="auth.isStaff" to="/admin" class="chip">管理台</router-link>
-      <router-link to="/elections" class="chip">选举</router-link>
-      <router-link to="/receipt" class="chip">凭证核验</router-link>
-      <button v-if="auth.user" class="btn sm ghost" @click="logout">退出</button>
+  <header class="topbar">
+    <div class="container topbar-inner">
+      <router-link to="/elections" class="brand">
+        <img :src="hkmuLogo" class="brand-logo" alt="香港都會大學 HKMU" />
+        <span class="brand-text">
+          <strong>选举管理与投票系统</strong>
+          <small>COMP 3500SEF · 小组项目</small>
+        </span>
+      </router-link>
+
+      <nav class="nav" aria-label="主导航">
+        <router-link
+          v-for="item in navItems"
+          :key="item.to"
+          :to="item.to"
+          class="nav-link"
+          :class="{ active: route.path.startsWith(item.to) }"
+        >
+          {{ item.label }}
+        </router-link>
+        <router-link
+          v-if="auth.isStaff"
+          to="/admin"
+          class="nav-link"
+          :class="{ active: route.path.startsWith('/admin') }"
+        >
+          管理台
+        </router-link>
+      </nav>
+
+      <div class="account">
+        <template v-if="auth.user">
+          <span class="who">
+            <span class="who-name">{{ auth.user.name || auth.user.student_id }}</span>
+            <span class="badge badge-muted badge-plain">{{ auth.user.role }}</span>
+          </span>
+          <button class="btn btn-ghost btn-sm" @click="logout">退出</button>
+        </template>
+        <router-link v-else to="/login" class="btn btn-sm">登录</router-link>
+      </div>
     </div>
   </header>
-  <div class="wrap">
+
+  <main>
     <router-view />
-  </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <span>COMP 3500SEF / 8500SEF 软件工程 · 学生课程项目</span>
+      <span class="muted">本系统为课程作业，非香港都会大学官方系统</span>
+    </div>
+  </footer>
 </template>
 
 <style scoped>
-header {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 16px 28px; color: #fff; gap: 16px; flex-wrap: wrap;
-  background: linear-gradient(120deg, #1e3a8a, #2f5bd7 60%, #4f7ef0);
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: saturate(180%) blur(8px);
+  border-bottom: 1px solid var(--line);
 }
-h1 { margin: 0; font-size: 18px; }
-.chip {
-  background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.28);
-  padding: 4px 11px; border-radius: 100px; font-size: 12px; color: #fff;
+
+.topbar-inner {
+  display: flex;
+  align-items: center;
+  gap: var(--s-5);
+  height: var(--topbar-h);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  color: var(--ink);
   text-decoration: none;
+  min-width: 0;
+}
+.brand:hover {
+  text-decoration: none;
+}
+
+.brand-logo {
+  height: 26px;
+  width: auto;
+  flex: none;
+  display: block;
+}
+
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+  min-width: 0;
+}
+.brand-text strong {
+  font-size: var(--text-base);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+.brand-text small {
+  font-size: var(--text-xs);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  margin-left: var(--s-3);
+}
+
+.nav-link {
+  padding: 6px var(--s-3);
+  border-radius: var(--r-sm);
+  color: var(--ink-soft);
+  font-size: var(--text-sm);
+  font-weight: 550;
+  text-decoration: none;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.nav-link:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+  text-decoration: none;
+}
+.nav-link.active {
+  background: var(--brand-soft);
+  color: var(--brand-dark);
+}
+
+.account {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+.who {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--text-sm);
+  color: var(--ink-soft);
+}
+.who-name {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.site-footer {
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+  padding: var(--s-4) 0;
+  margin-top: var(--s-6);
+}
+
+.footer-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  font-size: var(--text-xs);
+  color: var(--ink-soft);
+}
+
+@media (max-width: 720px) {
+  .brand-text small,
+  .who-name {
+    display: none;
+  }
+  .topbar-inner {
+    gap: var(--s-3);
+  }
+  .nav {
+    margin-left: 0;
+  }
 }
 </style>
