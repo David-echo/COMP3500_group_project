@@ -6,7 +6,9 @@
 
 1. **一人一票**由数据库唯一约束 votes_log(position_id, user_id) 仲裁，
    **不使用** "先 SELECT 检查再 INSERT" 的 check-then-act 写法（并发下会双投）。
-2. **物理隔离**：写入的 ballots 不含 user_id，voter_roll 不含 ballot_id。
+2. **物理隔离**：ballots 不含 user_id；voter_roll / votes_log 不含 ballot_id；
+   审计日志的 ballot.cast 记录不含任何选票标识（ballot_id / receipt_code / anon_id）。
+   任何一张表都不同时持有「选民身份」与「选票标识」。
 3. 整个投票在一个事务内完成，任一步失败全部回滚。
 """
 
@@ -125,12 +127,11 @@ async def cast_ballot(
         session.add(ballot)
         await session.flush()  # 取得 ballot.id
 
-        # --- 2) 由唯一约束仲裁"一人一票" ---
+        # --- 2) 由唯一约束仲裁"一人一票"（不含 ballot_id，避免形成选民→选票的关联边）---
         session.add(
             VotesLog(
                 position_id=position_id,
                 user_id=user_id,
-                ballot_id=ballot.id,
                 created_at=now,
             )
         )
@@ -155,7 +156,10 @@ async def cast_ballot(
     roll.has_voted = True
     roll.voted_at = now
 
-    # --- 5) 审计（记录谁投了 + 凭证码，但不记录选择）---
+    # --- 5) 审计 ---
+    # 匿名性守卫：payload 只允许含「谁投了」（user_id），
+    # 不得携带 ballot_id / receipt_code / anon_id —— 否则哈希链日志
+    # 会变成一张永久的「选民 ↔ 选票」对照表，且因不可篡改而无法撤销。
     seq = await audit.append(
         session,
         op="ballot.cast",
@@ -164,8 +168,6 @@ async def cast_ballot(
             "election_id": election_id,
             "position_id": position_id,
             "user_id": user_id,
-            "receipt_code": receipt.code,
-            "ballot_id": ballot.id,
         },
         ts=now.isoformat(),
     )

@@ -264,6 +264,44 @@ class TestInvariants:
         cols = {c.name for c in VoterRoll.__table__.columns}
         assert "ballot_id" not in cols
 
+    async def test_votes_log_has_no_ballot_link(self):
+        """votes_log 持有 user_id，因此绝不能再持有任何选票标识。"""
+        cols = {c.name for c in VotesLog.__table__.columns}
+        assert "ballot_id" not in cols
+        assert "anon_id" not in cols
+        assert "receipt_code" not in cols
+
+    async def test_audit_cast_payload_has_no_ballot_link(self, client, setup_election):
+        """运行时断言：ballot.cast 审计记录不含选民↔选票的关联边。"""
+        import json as _json
+
+        from app.models import AuditLog
+
+        s = setup_election
+        t = await login(client, s["voters"][0].student_id)
+        r = await client.post(
+            f"/api/v1/elections/{s['election_id']}/votes",
+            json={"position_id": s["position_id"], "choice": [0]},
+            headers=auth(t["access_token"]),
+        )
+        assert r.status_code == 201
+
+        async with SessionLocal() as db:
+            entries = (
+                (
+                    await db.execute(
+                        select(AuditLog).where(AuditLog.op == "ballot.cast")
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        assert len(entries) == 1
+        payload = _json.loads(entries[0].payload)
+        assert "user_id" in payload
+        for link in ("ballot_id", "anon_id", "receipt_code"):
+            assert link not in payload, f"审计 payload 泄露选票标识: {link}"
+
 
 # ==========================================================================
 # 并发：一人一票
