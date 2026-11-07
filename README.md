@@ -9,8 +9,8 @@ it is resolving the central tension in any election system:
 > **Anonymity requires that no one can trace a ballot back to a voter.
 > Auditability requires that cheating can be detected. These two demands conflict.**
 
-We satisfy both with **data structure** and **database constraints**, rather than by promising
-"we will not read the logs".
+We implement encrypted ballot storage and database-enforced duplicate-vote prevention.
+Full anonymity remains unfinished because vote and audit logs retain identity-to-ballot links.
 
 ---
 
@@ -111,18 +111,18 @@ cd backend && python -m app.seed
 
 ## 4. Two core design decisions
 
-### 4.1 Anonymity: ballots and the voter roll are physically separated
+### 4.1 Privacy: encrypted ballots, with identity linkage still present
 
 ```
 voter_roll   who voted      user_id / has_voted      no ballot_id
 ballots      what was cast  anon_id / choice_enc     no user_id
 receipts     proof          code → given to the voter only
-votes_log    one vote       UNIQUE(position_id, user_id)
+votes_log    one vote       UNIQUE(position_id, user_id), plus ballot_id
 ```
 
-There is **no field or foreign key** anywhere that can link a voter to a choice.
-Anonymity is not a promise, it is a property of the schema — and the tests assert that the
-linking columns do not exist.
+`ballots` has no `user_id`, and choices are encrypted with AES-GCM. However, `votes_log` and
+ballot-cast audit entries both retain `user_id` and `ballot_id`, so identity can still be linked
+to a ballot. This is encrypted storage, not full anonymity; removing those links remains future work.
 
 ### 4.2 One vote per voter: arbitrated by a **database unique constraint**
 

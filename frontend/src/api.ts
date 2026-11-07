@@ -40,6 +40,7 @@ export interface Election {
   positions: Position[]
   turnout: Turnout
   my_vote_status: 'NOT_VOTED' | 'VOTED' | 'NOT_ELIGIBLE'
+  voted_position_ids?: number[]
 }
 
 export interface VoteResult {

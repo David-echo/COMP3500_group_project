@@ -8,19 +8,24 @@ const router = useRouter()
 const electionId = Number(route.params.id)
 
 const election = ref<Election | null>(null)
+const posIndex = ref(0)
 const rank = ref<number[]>([])
 const error = ref('')
 const submitting = ref(false)
 const receipt = ref<{ code: string; auditSeq: number } | null>(null)
 const copied = ref(false)
-
-const position = computed(() => election.value?.positions[0])
+const positions = computed(() => election.value?.positions ?? [])
+const position = computed(() => positions.value[posIndex.value])
 const isIrv = computed(() => election.value?.tally_method === 'irv')
+const nextPositionIndex = computed(() =>
+  positions.value.findIndex((p) => !election.value?.voted_position_ids?.includes(p.id)),
+)
 
 onMounted(async () => {
   try {
     const list = await api.elections()
     election.value = list.find((e) => e.id === electionId) ?? null
+    posIndex.value = nextPositionIndex.value
   } catch (e) {
     error.value = (e as Error).message
   }
@@ -55,12 +60,24 @@ async function submit() {
   submitting.value = true
   try {
     const r = await api.vote(election.value.id, position.value.id, rank.value)
+    election.value.voted_position_ids = [
+      ...(election.value.voted_position_ids ?? []), position.value.id,
+    ]
     receipt.value = { code: r.receipt_code, auditSeq: r.audit_seq }
   } catch (e) {
     error.value = (e as Error).message
   } finally {
     submitting.value = false
   }
+}
+
+function nextPosition() {
+  if (nextPositionIndex.value < 0) return
+  posIndex.value = nextPositionIndex.value
+  rank.value = []
+  receipt.value = null
+  error.value = ''
+  copied.value = false
 }
 
 async function copyCode() {
@@ -82,7 +99,12 @@ async function copyCode() {
       <div>
         <button class="backlink" @click="router.push('/elections')">← Back to elections</button>
         <h1 class="page-title mt-3">{{ election?.title ?? 'Vote' }}</h1>
-        <p v-if="position" class="page-sub">{{ position.title }}</p>
+        <p v-if="position" class="page-sub">
+          {{ position.title }}
+          <template v-if="positions.length > 1">
+            · Position {{ posIndex + 1 }} / {{ positions.length }}
+          </template>
+        </p>
       </div>
       <span v-if="election" class="badge" :class="`badge-${election.status}`">
         {{ election.status_label }}
@@ -115,8 +137,17 @@ async function copyCode() {
         </p>
 
         <div class="row mt-5">
-          <button class="btn btn-ghost" @click="router.push('/receipt')">Verify receipt</button>
-          <button class="btn" @click="router.push('/elections')">Back to elections</button>
+          <button
+            v-if="nextPositionIndex >= 0"
+            class="btn"
+            @click="nextPosition"
+          >
+            Next position
+          </button>
+          <template v-else>
+            <button class="btn btn-ghost" @click="router.push('/receipt')">Verify receipt</button>
+            <button class="btn" @click="router.push('/elections')">Back to elections</button>
+          </template>
         </div>
       </div>
     </section>
@@ -134,6 +165,13 @@ async function copyCode() {
     </section>
 
     
+    <section v-else-if="election && positions.length && nextPositionIndex < 0" class="card">
+      <div class="card-body">
+        <p>All positions completed.</p>
+        <button class="btn mt-4" @click="router.push('/elections')">Back to elections</button>
+      </div>
+    </section>
+
     <section v-else-if="election && position" class="ballot-grid">
       <div class="card">
         <div class="card-head">

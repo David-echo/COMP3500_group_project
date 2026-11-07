@@ -6,6 +6,7 @@ const routes = [
   { path: '/login', component: () => import('./views/LoginView.vue'), meta: { public: true } },
   { path: '/elections', component: () => import('./views/ElectionsView.vue') },
   { path: '/elections/:id/vote', component: () => import('./views/BallotView.vue') },
+  { path: '/elections/:id/results', component: () => import('./views/ResultsView.vue') },
   { path: '/receipt', component: () => import('./views/ReceiptView.vue') },
   { path: '/admin', component: () => import('./views/AdminView.vue') },
 ]

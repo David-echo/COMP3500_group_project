@@ -63,6 +63,7 @@ class ElectionOut(BaseModel):
     positions: list[PositionOut]
     turnout: Turnout
     my_vote_status: Literal["NOT_VOTED", "VOTED", "NOT_ELIGIBLE"] = "NOT_ELIGIBLE"
+    voted_position_ids: list[int] = Field(default_factory=list)
 class CandidateIn(BaseModel):
     idx: int = Field(ge=0)
     name: str = Field(min_length=1, max_length=120)

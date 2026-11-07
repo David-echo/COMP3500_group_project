@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 
 from ..deps import AdminUser, CurrentUser, SessionDep
 from ..domain import lifecycle
-from ..models import Candidate, Election, Position, Result, VoterRoll
+from ..models import Candidate, Election, Position, Result, VoterRoll, VotesLog
 from ..schemas import (
     ElectionCreate,
     ElectionOut,
@@ -54,6 +54,7 @@ async def _build_out(session, election: Election, user: User | None) -> Election
     ).scalar_one()
 
     my = "NOT_ELIGIBLE"
+    voted_position_ids: list[int] = []
     if user is not None:
         roll = (
             await session.execute(
@@ -63,7 +64,19 @@ async def _build_out(session, election: Election, user: User | None) -> Election
             )
         ).scalar_one_or_none()
         if roll is not None:
-            my = "VOTED" if roll.has_voted else "NOT_VOTED"
+            voted_position_ids = list(
+                (
+                    await session.execute(
+                        select(VotesLog.position_id)
+                        .join(Position, Position.id == VotesLog.position_id)
+                        .where(
+                            Position.election_id == election.id,
+                            VotesLog.user_id == user.id,
+                        )
+                    )
+                ).scalars().all()
+            )
+            my = "VOTED" if positions and len(voted_position_ids) == len(positions) else "NOT_VOTED"
 
     return ElectionOut(
         id=election.id,
@@ -81,6 +94,7 @@ async def _build_out(session, election: Election, user: User | None) -> Election
             percent=round(voted * 100.0 / total, 1) if total else 0.0,
         ),
         my_vote_status=my,
+        voted_position_ids=voted_position_ids,
     )
 
 

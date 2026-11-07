@@ -4,7 +4,7 @@ import asyncio
 import pytest
 from sqlalchemy import func, select
 from app.db import SessionLocal
-from app.models import Ballot, Receipt, VotesLog
+from app.models import Ballot, Candidate, Position, Receipt, VoterRoll, VotesLog
 from .conftest import auth, login, make_user
 # ==========================================================================
 # ==========================================================================
@@ -41,6 +41,69 @@ class TestAuth:
 # ==========================================================================
 # ==========================================================================
 class TestVotingFlow:
+    async def test_multi_position_resume_completion_and_integrity(self, client, setup_election):
+        s = setup_election
+        async with SessionLocal() as db:
+            second = Position(election_id=s["election_id"], title="Secretary", seats=1)
+            db.add(second)
+            await db.flush()
+            db.add(Candidate(position_id=second.id, idx=0, name="Dana", party=""))
+            await db.commit()
+        base = f"/api/v1/elections/{s['election_id']}"
+        voter = auth((await login(client, s["voters"][0].student_id))["access_token"])
+        other = auth((await login(client, s["voters"][1].student_id))["access_token"])
+        admin = auth((await login(client, s["admin"].student_id))["access_token"])
+
+        # Vote out of order, then refetch exactly as a refreshed ballot page does.
+        r = await client.post(
+            f"{base}/votes", json={"position_id": second.id, "choice": [0]}, headers=voter,
+        )
+        assert r.status_code == 201, r.text
+        refreshed = (await client.get("/api/v1/elections", headers=voter)).json()[0]
+        assert refreshed["voted_position_ids"] == [second.id]
+        assert refreshed["my_vote_status"] == "NOT_VOTED"
+        assert refreshed["turnout"]["voted"] == 0
+        assert (await client.get(base, headers=other)).json()["voted_position_ids"] == []
+        assert (await client.get(f"{base}/integrity", headers=admin)).json()["all_passed"]
+        async with SessionLocal() as db:
+            roll = (await db.execute(select(VoterRoll).where(
+                VoterRoll.election_id == s["election_id"],
+                VoterRoll.user_id == s["voters"][0].id,
+            ))).scalar_one()
+            assert roll.has_voted is False and roll.voted_at is None
+            # An old partial-completion flag must not prevent resuming.
+            roll.has_voted = True
+            await db.commit()
+        assert (await client.get(base, headers=voter)).json()["my_vote_status"] == "NOT_VOTED"
+        assert not (await client.get(f"{base}/integrity", headers=admin)).json()["all_passed"]
+
+        r = await client.post(
+            f"{base}/votes", json={"position_id": s["position_id"], "choice": [1]}, headers=voter,
+        )
+        assert r.status_code == 201, r.text
+        refreshed = (await client.get("/api/v1/elections", headers=voter)).json()[0]
+        assert set(refreshed["voted_position_ids"]) == {s["position_id"], second.id}
+        assert refreshed["my_vote_status"] == "VOTED"
+        assert refreshed["turnout"]["voted"] == 1
+        async with SessionLocal() as db:
+            roll = (await db.execute(select(VoterRoll).where(
+                VoterRoll.election_id == s["election_id"],
+                VoterRoll.user_id == s["voters"][0].id,
+            ))).scalar_one()
+            assert roll.has_voted is True and roll.voted_at is not None
+        duplicate = await client.post(
+            f"{base}/votes", json={"position_id": second.id, "choice": [0]}, headers=voter,
+        )
+        assert duplicate.status_code == 409
+        # One completed voter plus one partial voter still passes integrity.
+        r = await client.post(
+            f"{base}/votes", json={"position_id": s["position_id"], "choice": [0]}, headers=other,
+        )
+        assert r.status_code == 201, r.text
+        check = await client.get(f"{base}/integrity", headers=admin)
+        assert check.status_code == 200
+        assert check.json()["all_passed"], check.text
+
     async def test_vote_then_receipt_then_duplicate(self, client, setup_election):
         s = setup_election
         t = await login(client, s["voters"][0].student_id)

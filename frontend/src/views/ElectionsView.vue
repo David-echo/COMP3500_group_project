@@ -40,6 +40,11 @@ function goVote(e: Election) {
   router.push(`/elections/${e.id}/vote`)
 }
 
+function goResults(e: Election) {
+  close()
+  router.push(`/elections/${e.id}/results`)
+}
+
 const canVote = (e: Election) =>
   e.status === 'open' && e.my_vote_status === 'NOT_VOTED'
 
@@ -122,7 +127,7 @@ onMounted(load)
           <button
             v-else-if="e.status === 'closed' || e.status === 'published'"
             class="btn btn-ghost"
-            @click="goVote(e)"
+            @click="goResults(e)"
           >
             View results
           </button>

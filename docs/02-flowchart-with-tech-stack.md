@@ -186,7 +186,7 @@ sequenceDiagram
     else open
         SV->>DB: load the voter roll entry
         DB-->>SV: eligible flag
-        SV->>DB: insert into ballots, anonymous
+        SV->>DB: insert into ballots, AES-GCM encrypted choice
         DB-->>SV: ballot id
         SV->>DB: insert into votes_log
         alt unique constraint violated
@@ -263,7 +263,7 @@ locally; the diagram shows the target shape.
 | Cache | Redis 7, used for sessions and pub/sub |
 | How does real-time work | SSE, server push, one-way |
 | How is one vote per voter enforced | database unique constraint on position and user |
-| How is anonymity preserved | ballots and voter roll are separate tables with no linking key |
+| What privacy is implemented | ballots have no user_id and use AES-GCM, but votes_log and audit entries retain user_id + ballot_id; full anonymity remains unfinished |
 | What are the tally methods | FPTP now, IRV added by strategy pattern |
 | How is tampering detected | append-only audit chain with hashes |
 | How many tests | 44, including concurrency and tamper cases |

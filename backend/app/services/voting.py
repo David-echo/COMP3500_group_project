@@ -64,7 +64,7 @@ async def cast_ballot(
         await session.execute(
             select(VoterRoll).where(
                 VoterRoll.election_id == election_id, VoterRoll.user_id == user_id
-            )
+            ).with_for_update()
         )
     ).scalar_one_or_none()
     if roll is None:
@@ -111,8 +111,27 @@ async def cast_ballot(
         created_at=now,
     )
     session.add(receipt)
-    roll.has_voted = True
-    roll.voted_at = now
+    # Only mark the roll complete after every position has a ballot.
+    n_positions = (
+        await session.execute(
+            select(func.count()).select_from(Position).where(
+                Position.election_id == election_id
+            )
+        )
+    ).scalar_one()
+    n_cast = (
+        await session.execute(
+            select(func.count())
+            .select_from(VotesLog)
+            .join(Position, Position.id == VotesLog.position_id)
+            .where(
+                Position.election_id == election_id,
+                VotesLog.user_id == user_id,
+            )
+        )
+    ).scalar_one()
+    roll.has_voted = n_cast == n_positions
+    roll.voted_at = now if roll.has_voted else None
     seq = await audit.append(
         session,
         op="ballot.cast",

@@ -224,6 +224,9 @@ async def get_results(session: AsyncSession, election_id: int) -> dict:
 # ==========================================================================
 async def check_integrity(session: AsyncSession, election_id: int) -> dict:
     checks = []
+    positions = (
+        await session.execute(select(Position).where(Position.election_id == election_id))
+    ).scalars().all()
     dup = (
         await session.execute(
             select(VotesLog.position_id, VotesLog.user_id, func.count().label("c"))
@@ -245,24 +248,25 @@ async def check_integrity(session: AsyncSession, election_id: int) -> dict:
             )
         )
     ).scalar_one()
+    completed_voters = (
+        select(VotesLog.user_id)
+        .join(Position, Position.id == VotesLog.position_id)
+        .where(Position.election_id == election_id)
+        .group_by(VotesLog.user_id)
+        .having(func.count(func.distinct(VotesLog.position_id)) == len(positions))
+    ).subquery()
     logged = (
         await session.execute(
-            select(func.count())
-            .select_from(VotesLog)
-            .join(Position, Position.id == VotesLog.position_id)
-            .where(Position.election_id == election_id)
+            select(func.count(func.distinct(completed_voters.c.user_id)))
         )
     ).scalar_one()
     checks.append(
         {
-            "name": "Voters marked as voted == vote records",
+            "name": "Voters marked as voted == distinct voters with all positions cast",
             "passed": voted == logged,
-            "detail": f"{voted} on roll / {logged} records",
+            "detail": f"{voted} complete on roll / {logged} distinct completed voters",
         }
     )
-    positions = (
-        await session.execute(select(Position).where(Position.election_id == election_id))
-    ).scalars().all()
     detail = []
     ok = True
     for p in positions:
