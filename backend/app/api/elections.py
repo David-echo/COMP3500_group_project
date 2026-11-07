@@ -1,4 +1,4 @@
-"""选举接口 (Elections router) —— 成员 4 负责"""
+"""Module."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from ..schemas import (
     Turnout,
 )
 
-router = APIRouter(prefix="/elections", tags=["选举"])
+router = APIRouter(prefix="/elections", tags=["Elections"])
 
 
 async def _build_out(session, election: Election, user: User | None) -> ElectionOut:  # noqa: F821
@@ -85,7 +85,7 @@ async def _build_out(session, election: Election, user: User | None) -> Election
 
 
 async def tick_elections(session) -> list[dict]:
-    """按时间自动推进状态（scheduled→open→closed）。写审计。"""
+    """Tick elections."""
     from ..services import audit
 
     now = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -106,7 +106,7 @@ async def tick_elections(session) -> list[dict]:
                 op="election.status",
                 actor="system",
                 payload={"election_id": e.id, "from": old, "to": target,
-                         "reason": "时间窗口自动推进"},
+                         "reason": "automatic status advance"},
             )
             changed.append({"election_id": e.id, "from": old, "to": target})
     if changed:
@@ -116,7 +116,7 @@ async def tick_elections(session) -> list[dict]:
 
 @router.get("", response_model=list[ElectionOut])
 async def list_elections(session: SessionDep, user: CurrentUser) -> list[ElectionOut]:
-    """返回当前用户可见的选举（选民只返回名册内的）。"""
+    """List elections."""
     await tick_elections(session)
     rows = (await session.execute(select(Election).order_by(Election.id))).scalars().all()
 
@@ -139,7 +139,7 @@ async def get_election(election_id: int, session: SessionDep, user: CurrentUser)
         await session.execute(select(Election).where(Election.id == election_id))
     ).scalar_one_or_none()
     if e is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "选举不存在")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Election not found")
     return await _build_out(session, e, user)
 
 
@@ -176,14 +176,14 @@ async def create_election(
 async def change_status(
     election_id: int, payload: StatusChange, session: SessionDep, admin: AdminUser
 ) -> ElectionOut:
-    """状态变更唯一入口：非法迁移一律拒绝（对应 FR-9）。"""
+    """Change status."""
     from ..services import audit
 
     e = (
         await session.execute(select(Election).where(Election.id == election_id))
     ).scalar_one_or_none()
     if e is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "选举不存在")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Election not found")
 
     try:
         lifecycle.assert_transition(e.status, payload.status)
@@ -197,7 +197,7 @@ async def change_status(
         op="election.status",
         actor=admin.student_id,
         payload={"election_id": e.id, "from": old, "to": payload.status,
-                 "reason": "管理员操作"},
+                 "reason": "admin action"},
     )
     await session.commit()
     return await _build_out(session, e, admin)

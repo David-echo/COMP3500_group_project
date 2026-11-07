@@ -1,4 +1,4 @@
-"""FastAPI 依赖注入 (Dependencies)"""
+"""Module."""
 
 from __future__ import annotations
 
@@ -23,15 +23,15 @@ async def get_current_user(
     creds: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
 ) -> User:
     if creds is None:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "未登录或凭证缺失")
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not signed in or missing credentials")
     payload = decode_token(creds.credentials)
     if not payload or "sub" not in payload:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "凭证无效或已过期")
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token")
     user = (
         await session.execute(select(User).where(User.student_id == payload["sub"]))
     ).scalar_one_or_none()
     if user is None:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "用户不存在")
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
     return user
 
 
@@ -39,11 +39,11 @@ CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
 def require_role(*roles: str):
-    """角色鉴权依赖工厂。用法: Depends(require_role("ADMIN"))"""
+    """Require role."""
 
     async def _checker(user: CurrentUser) -> User:
         if user.role not in roles:
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "权限不足")
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient permissions")
         return user
 
     return _checker

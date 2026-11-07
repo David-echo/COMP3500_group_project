@@ -70,18 +70,18 @@ async function copyCode() {
     copied.value = true
     setTimeout(() => (copied.value = false), 1800)
   } catch {
-    /* 剪贴板不可用时忽略，用户可手动选中 */
+    
   }
 }
 </script>
 
 <template>
   <div class="container page ballot-page">
-    <!-- 顶部返回 + 标题 -->
+    
     <header class="page-head">
       <div>
-        <button class="backlink" @click="router.push('/elections')">← 返回选举列表</button>
-        <h1 class="page-title mt-3">{{ election?.title ?? '投票' }}</h1>
+        <button class="backlink" @click="router.push('/elections')">← Back to elections</button>
+        <h1 class="page-title mt-3">{{ election?.title ?? 'Vote' }}</h1>
         <p v-if="position" class="page-sub">{{ position.title }}</p>
       </div>
       <span v-if="election" class="badge" :class="`badge-${election.status}`">
@@ -91,55 +91,55 @@ async function copyCode() {
 
     <div v-if="error" class="alert alert-danger" role="alert">{{ error }}</div>
 
-    <!-- 投票成功 -->
+    
     <section v-if="receipt" class="card receipt-card rise-in">
       <div class="card-body">
         <div class="receipt-head">
           <span class="receipt-icon" aria-hidden="true">✓</span>
           <div>
-            <h2 class="card-title">投票已完成</h2>
-            <p class="page-sub">请保存下面的凭证码，可用于确认你的选票已计入。</p>
+            <h2 class="card-title">Vote submitted</h2>
+            <p class="page-sub">Save the receipt code below — it confirms that your ballot was counted.</p>
           </div>
         </div>
 
         <div class="receipt-code">
           <span class="mono">{{ receipt.code }}</span>
           <button class="btn btn-ghost btn-sm" @click="copyCode">
-            {{ copied ? '已复制' : '复制' }}
+            {{ copied ? 'Copied' : 'Copy' }}
           </button>
         </div>
 
         <p class="hint">
-          审计记录 #{{ receipt.auditSeq }} · 凭证<strong>不包含</strong>你的选择内容，
-          因此无法用来向他人证明投给了谁。
+          Audit entry #{{ receipt.auditSeq }} · The receipt does <strong>not</strong> contain
+          your choice, so it cannot prove to anyone how you voted.
         </p>
 
         <div class="row mt-5">
-          <button class="btn btn-ghost" @click="router.push('/receipt')">去核验凭证</button>
-          <button class="btn" @click="router.push('/elections')">返回选举列表</button>
+          <button class="btn btn-ghost" @click="router.push('/receipt')">Verify receipt</button>
+          <button class="btn" @click="router.push('/elections')">Back to elections</button>
         </div>
       </div>
     </section>
 
-    <!-- 不可投票 -->
+    
     <section v-else-if="notOpen" class="card">
       <div class="card-body">
         <div class="alert alert-info">
-          该选举当前状态为「{{ election?.status_label }}」，不接受投票。
+          This election is "{{ election?.status_label }}" and is not accepting votes.
         </div>
         <div class="row mt-4">
-          <button class="btn btn-ghost" @click="router.push('/elections')">返回</button>
+          <button class="btn btn-ghost" @click="router.push('/elections')">Back</button>
         </div>
       </div>
     </section>
 
-    <!-- 选票 -->
+    
     <section v-else-if="election && position" class="ballot-grid">
       <div class="card">
         <div class="card-head">
-          <h2 class="card-title">选择候选人</h2>
+          <h2 class="card-title">Choose a candidate</h2>
           <span class="hint">
-            {{ isIrv ? '按偏好顺序依次点击' : '单选，点击即可选中' }}
+            {{ isIrv ? 'Click in order of preference' : 'Single choice — click to select' }}
           </span>
         </div>
 
@@ -161,44 +161,44 @@ async function copyCode() {
             </span>
             <span class="candidate-text">
               <strong>{{ c.name }}</strong>
-              <small>{{ c.party || '独立' }}</small>
+              <small>{{ c.party || 'Independent' }}</small>
             </span>
             <span v-if="rank.includes(c.idx)" class="tick" aria-hidden="true">✓</span>
           </li>
         </ul>
       </div>
 
-      <!-- 提交区 -->
+      
       <aside class="card summary">
         <div class="card-body">
-          <h2 class="card-title">确认投票</h2>
+          <h2 class="card-title">Confirm your vote</h2>
 
           <div class="summary-body">
-            <p class="muted text-xs">你已选择</p>
+            <p class="muted text-xs">Your selection</p>
             <ol v-if="selectedNames.length" class="summary-list">
               <li v-for="(n, i) in selectedNames" :key="i">
                 <span v-if="rank.length > 1" class="idx">{{ i + 1 }}</span>
                 {{ n }}
               </li>
             </ol>
-            <p v-else class="empty-inline">尚未选择候选人</p>
+            <p v-else class="empty-inline">No candidate selected</p>
           </div>
 
           <button class="btn btn-block" :disabled="!canSubmit" @click="submit">
-            {{ submitting ? '提交中…' : '确认投票' }}
+            {{ submitting ? 'Submitting…' : 'Confirm vote' }}
           </button>
 
           <p class="hint mt-3">
             {{ isIrv
-              ? '排序复选制：只选一个也可以提交。'
-              : '单选制：只能选择一名候选人。' }}
-            提交后不能修改。
+              ? 'Ranked choice: selecting one candidate is allowed.'
+              : 'Single choice: only one candidate.' }}
+            This cannot be changed after submission.
           </p>
         </div>
       </aside>
     </section>
 
-    <div v-else class="card empty">加载中…</div>
+    <div v-else class="card empty">Loading…</div>
   </div>
 </template>
 
@@ -300,7 +300,7 @@ async function copyCode() {
   font-weight: 700;
 }
 
-/* 右侧提交区 */
+
 .summary {
   position: sticky;
   top: calc(var(--topbar-h) + var(--s-4));
@@ -344,7 +344,7 @@ async function copyCode() {
   font-size: var(--text-sm);
 }
 
-/* 凭证卡片 */
+
 .receipt-card {
   max-width: 620px;
   margin: 0 auto;

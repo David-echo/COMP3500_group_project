@@ -1,35 +1,30 @@
-/* ============================================================
-   设计令牌 (Design Tokens)
-   ------------------------------------------------------------
-   所有颜色、字号、间距、圆角、阴影都从这里取值。
-   页面里不要再写死 #hex 或 px 魔法数字 —— 改一处即可全站生效。
-   ============================================================ */
+
 
 :root {
-  /* ---------- 色彩：中性 ---------- */
-  --ink:        #0f172a;   /* 主文字 */
-  --ink-soft:   #334155;   /* 次级文字 */
-  --muted:      #64748b;   /* 说明文字 */
-  --line:       #e2e8f0;   /* 边框 */
-  --line-soft:  #eef2f7;   /* 分隔线 */
-  --surface:    #ffffff;   /* 卡片 */
-  --surface-2:  #f8fafc;   /* 浅底（表头、代码块） */
-  --bg:         #f5f7fb;   /* 页面背景 */
+  
+  --ink:        #0f172a;   
+  --ink-soft:   #334155;   
+  --muted:      #64748b;   
+  --line:       #e2e8f0;   
+  --line-soft:  #eef2f7;   
+  --surface:    #ffffff;   
+  --surface-2:  #f8fafc;   
+  --bg:         #f5f7fb;   
 
-  /* ---------- 色彩：品牌（取自 HKMU logo 实测色值）---------- */
-  --brand:      #0078c0;   /* HKMU 蓝 */
+  
+  --brand:      #0078c0;   
   --brand-dark: #00619b;
   --brand-soft: #eaf4fb;
   --brand-line: #bbdcf0;
 
-  /* HKMU 绿：用于强调、进度与「进行中/通过」状态 */
+  
   --accent:      #78c03c;
   --accent-dark: #5c9a26;
   --accent-soft: #f2f9e9;
   --accent-line: #cde8a9;
 
-  /* ---------- 色彩：语义 ---------- */
-  --ok:         #457a16;   /* HKMU 绿的深色版，白底对比度 5.2:1 */
+  
+  --ok:         #457a16;   
   --ok-soft:    #f2f9e9;
   --ok-line:    #cde8a9;
   --warn:       #b45309;
@@ -39,7 +34,7 @@
   --danger-soft:#fef2f2;
   --danger-line:#fecaca;
 
-  /* ---------- 字号 ---------- */
+  
   --text-xs:   12px;
   --text-sm:   13px;
   --text-base: 14px;
@@ -48,7 +43,7 @@
   --text-xl:   26px;
   --text-2xl:  34px;
 
-  /* ---------- 间距（4 的倍数）---------- */
+  
   --s-1: 4px;
   --s-2: 8px;
   --s-3: 12px;
@@ -57,28 +52,28 @@
   --s-6: 32px;
   --s-7: 48px;
 
-  /* ---------- 圆角 ---------- */
+  
   --r-sm: 6px;
   --r-md: 10px;
   --r-lg: 14px;
   --r-pill: 999px;
 
-  /* ---------- 阴影 ---------- */
+  
   --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
   --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05), 0 1px 3px rgba(15, 23, 42, 0.06);
   --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.07), 0 1px 3px rgba(15, 23, 42, 0.05);
 
-  /* ---------- 动效 ---------- */
+  
   --ease: cubic-bezier(0.4, 0, 0.2, 1);
   --dur-fast: 120ms;
   --dur: 180ms;
 
-  /* ---------- 布局 ---------- */
+  
   --container: 1120px;
   --topbar-h: 60px;
 }
 
-/* 尊重系统「减少动态效果」设置 */
+
 @media (prefers-reduced-motion: reduce) {
   :root {
     --dur-fast: 0ms;

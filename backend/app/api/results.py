@@ -1,4 +1,4 @@
-"""结果接口 (Results router) —— 成员 4 负责"""
+"""Module."""
 
 from __future__ import annotations
 
@@ -9,12 +9,12 @@ from ..schemas import ResultOut, ResultsResponse
 from ..services import results as results_svc
 from ..services.voting import VoteError
 
-router = APIRouter(tags=["结果"])
+router = APIRouter(tags=["Results"])
 
 
 @router.get("/elections/{election_id}/results", response_model=ResultsResponse)
 async def get_results(election_id: int, session: SessionDep) -> ResultsResponse:
-    """未截止不公开；已截止返回结果（必要时先计票）。"""
+    """Get results."""
     try:
         data = await results_svc.get_results(session, election_id)
     except VoteError as exc:
@@ -39,7 +39,7 @@ async def get_results(election_id: int, session: SessionDep) -> ResultsResponse:
 
 @router.post("/elections/{election_id}/results/publish", response_model=ResultsResponse)
 async def publish_results(election_id: int, session: SessionDep, admin: AdminUser) -> ResultsResponse:
-    """计票并公示（仅 ADMIN，且选举须为 closed）。"""
+    """Publish results."""
     try:
         await results_svc.publish(session, election_id, actor=admin.student_id)
     except VoteError as exc:

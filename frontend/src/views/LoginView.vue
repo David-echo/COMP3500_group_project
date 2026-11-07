@@ -41,32 +41,32 @@ function switchMode() {
 <template>
   <div class="auth-page">
     <div class="auth-card">
-      <!-- 左侧说明区 -->
+      
       <aside class="auth-aside">
         <div class="auth-aside-inner">
           <div class="auth-logo">
-            <img :src="hkmuLogo" alt="香港都會大學 HKMU" />
+            <img :src="hkmuLogo" alt="Hong Kong Metropolitan University (HKMU)" />
           </div>
           <span class="auth-badge">COMP 3500SEF</span>
-          <h1 class="auth-h1">选举管理<br />与投票系统</h1>
+          <h1 class="auth-h1">Election Management<br />&amp; Voting System</h1>
           <p class="auth-lead">
-            投票匿名、结果可审计。<br />
-            每一张选票都能被验证，但没有人能查出你投给了谁。
+            Anonymous ballots, auditable results.<br />
+            Every vote can be verified — but no one can tell who you voted for.
           </p>
           <ul class="auth-points">
-            <li><span class="dot" aria-hidden="true"></span>一人一票，由数据库约束保证</li>
-            <li><span class="dot" aria-hidden="true"></span>凭证码可核验，且不含选择内容</li>
-            <li><span class="dot" aria-hidden="true"></span>审计日志哈希链，篡改可检测</li>
+            <li><span class="dot" aria-hidden="true"></span>One person, one vote — enforced by a database constraint</li>
+            <li><span class="dot" aria-hidden="true"></span>Receipt codes can be verified without revealing the choice</li>
+            <li><span class="dot" aria-hidden="true"></span>Hash-chained audit log makes tampering detectable</li>
           </ul>
         </div>
       </aside>
 
-      <!-- 右侧表单 -->
+      
       <section class="auth-form">
         <header class="auth-form-head">
-          <h2 class="card-title">{{ mode === 'login' ? '登录' : '注册' }}</h2>
+          <h2 class="card-title">{{ mode === 'login' ? 'Sign in' : 'Create account' }}</h2>
           <p class="page-sub">
-            {{ mode === 'login' ? '使用学号与密码进入系统' : '创建一个新账号，注册后自动登录' }}
+            {{ mode === 'login' ? 'Use your student ID and password' : 'Create an account — you will be signed in automatically' }}
           </p>
         </header>
 
@@ -74,7 +74,7 @@ function switchMode() {
 
         <form @submit.prevent="submit">
           <div class="field">
-            <label class="label" for="studentId">学号</label>
+            <label class="label" for="studentId">Student ID</label>
             <input
               id="studentId"
               v-model="studentId"
@@ -85,37 +85,37 @@ function switchMode() {
           </div>
 
           <div v-if="mode === 'register'" class="field">
-            <label class="label" for="regName">姓名</label>
-            <input id="regName" v-model="regName" class="input" placeholder="陈大文" />
+            <label class="label" for="regName">Full name</label>
+            <input id="regName" v-model="regName" class="input" placeholder="Chan Tai-man" />
           </div>
 
           <div class="field">
-            <label class="label" for="password">密码</label>
+            <label class="label" for="password">Password</label>
             <input
               id="password"
               v-model="password"
               class="input"
               type="password"
-              placeholder="至少 8 位"
+              placeholder="At least 8 characters"
               :autocomplete="mode === 'login' ? 'current-password' : 'new-password'"
             />
           </div>
 
           <button class="btn btn-block mt-5" type="submit" :disabled="loading">
-            {{ loading ? '请稍候…' : mode === 'login' ? '登录' : '注册并登录' }}
+            {{ loading ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account' }}
           </button>
         </form>
 
         <p class="auth-switch">
-          {{ mode === 'login' ? '还没有账号？' : '已有账号？' }}
+          {{ mode === 'login' ? 'No account yet?' : 'Already registered?' }}
           <button type="button" class="linkbtn" @click="switchMode">
-            {{ mode === 'login' ? '注册' : '去登录' }}
+            {{ mode === 'login' ? 'Create one' : 'Sign in' }}
           </button>
         </p>
 
         <p class="hint auth-hint">
-          演示环境：选民 <code class="mono">HK100000</code>–<code class="mono">HK100029</code> /
-          <code class="mono">voter12345</code>；管理员 <code class="mono">ADMIN001</code> /
+          Demo accounts: voter <code class="mono">HK100000</code>–<code class="mono">HK100029</code> /
+          <code class="mono">voter12345</code>; admin <code class="mono">ADMIN001</code> /
           <code class="mono">admin12345</code>
         </p>
       </section>
@@ -143,7 +143,7 @@ function switchMode() {
   overflow: hidden;
 }
 
-/* 左侧 */
+
 .auth-aside {
   background: linear-gradient(158deg, #00456e 0%, #00619b 48%, #0078c0 100%);
   color: #fff;
@@ -223,7 +223,7 @@ function switchMode() {
   flex: none;
 }
 
-/* 右侧 */
+
 .auth-form {
   padding: var(--s-6);
   display: flex;

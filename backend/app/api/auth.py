@@ -1,4 +1,4 @@
-"""认证接口 (Auth router) —— 成员 3 负责"""
+"""Module."""
 
 from __future__ import annotations
 
@@ -11,17 +11,12 @@ from ..models import User
 from ..schemas import LoginRequest, RegisterRequest, TokenResponse, UserOut
 from ..security import create_access_token, hash_password, verify_password
 
-router = APIRouter(prefix="/auth", tags=["认证"])
+router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
 @router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
 async def register(payload: RegisterRequest, session: SessionDep) -> UserOut:
-    """
-    注册。
-
-    注意（SRS 待决项）：真实部署应校验"只有本校学生可注册"。
-    当前实现仅保证学号唯一；接入学校 SSO / 学号库属于后续演化。
-    """
+    """Register."""
     user = User(
         student_id=payload.student_id.strip().upper(),
         name=payload.name.strip(),
@@ -33,7 +28,7 @@ async def register(payload: RegisterRequest, session: SessionDep) -> UserOut:
         await session.commit()
     except IntegrityError:
         await session.rollback()
-        raise HTTPException(status.HTTP_409_CONFLICT, "该学号已注册") from None
+        raise HTTPException(status.HTTP_409_CONFLICT, "This student ID is already registered") from None
     return UserOut.model_validate(user)
 
 
@@ -45,7 +40,7 @@ async def login(payload: LoginRequest, session: SessionDep) -> TokenResponse:
         )
     ).scalar_one_or_none()
     if user is None or not verify_password(payload.password, user.password_hash):
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "学号或密码错误")
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Incorrect student ID or password")
     token = create_access_token(user.student_id, user.role)
     return TokenResponse(access_token=token, user=UserOut.model_validate(user))
 

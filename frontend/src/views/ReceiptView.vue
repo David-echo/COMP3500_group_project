@@ -7,7 +7,7 @@ const info = ref<ReceiptInfo | null>(null)
 const error = ref('')
 const loading = ref(false)
 
-/** 后端返回 ISO 时间（含微秒），这里只显示到秒 */
+
 function fmtTime(v?: string) {
   if (!v) return '—'
   return v.replace('T', ' ').slice(0, 19)
@@ -18,7 +18,7 @@ async function verify() {
   info.value = null
   const value = code.value.trim()
   if (!value) {
-    error.value = '请输入凭证码'
+    error.value = 'Please enter a receipt code'
     return
   }
   loading.value = true
@@ -36,15 +36,15 @@ async function verify() {
   <div class="container page receipt-page">
     <header class="page-head">
       <div>
-        <h1 class="page-title">凭证核验</h1>
-        <p class="page-sub">输入投票后拿到的凭证码，确认选票是否已计入</p>
+        <h1 class="page-title">Verify receipt</h1>
+        <p class="page-sub">Enter the receipt code you received after voting to confirm your ballot was counted</p>
       </div>
     </header>
 
     <section class="card">
       <div class="card-body">
         <form class="verify-form" @submit.prevent="verify">
-          <label class="label" for="code">凭证码</label>
+          <label class="label" for="code">Receipt code</label>
           <div class="verify-row">
             <input
               id="code"
@@ -55,12 +55,12 @@ async function verify() {
               spellcheck="false"
             />
             <button class="btn" type="submit" :disabled="loading">
-              {{ loading ? '核验中…' : '核验' }}
+              {{ loading ? 'Checking…' : 'Verify' }}
             </button>
           </div>
           <p class="hint mt-3">
-            凭证<strong>不包含</strong>你的选择内容 —— 这是有意设计，防止凭证被用于
-            向他人证明投票选择（防胁迫与贿选）。
+            The receipt does <strong>not</strong> contain your choice. This is deliberate:
+            it prevents the receipt from being used to prove how you voted.
           </p>
         </form>
 
@@ -76,24 +76,24 @@ async function verify() {
               <span class="result-icon" aria-hidden="true">✓</span>
               <div>
                 <h2 class="card-title">{{ info.message }}</h2>
-                <p class="page-sub">该凭证对应的选票状态</p>
+                <p class="page-sub">Ballot status for this receipt</p>
               </div>
             </div>
 
             <dl class="result-grid">
               <div class="result-item">
-                <dt>选举</dt>
+                <dt>Election</dt>
                 <dd>{{ info.election_title }}</dd>
               </div>
               <div class="result-item">
-                <dt>投票时间</dt>
+                <dt>Voted at</dt>
                 <dd class="mono">{{ fmtTime(info.cast_at) }}</dd>
               </div>
               <div class="result-item">
-                <dt>是否计入</dt>
+                <dt>Counted</dt>
                 <dd>
                   <span class="badge" :class="info.counted ? 'badge-open' : 'badge-closed'">
-                    {{ info.counted ? '已计入' : '未计入' }}
+                    {{ info.counted ? 'Counted' : 'Not counted' }}
                   </span>
                 </dd>
               </div>

@@ -1,4 +1,4 @@
-"""审计接口 (Audit router) —— 成员 3 / 5 负责"""
+"""Module."""
 
 from __future__ import annotations
 
@@ -12,12 +12,12 @@ from ..models import AuditLog
 from ..schemas import AuditEntryOut, AuditVerifyOut
 from ..services import audit
 
-router = APIRouter(prefix="/audit", tags=["审计"])
+router = APIRouter(prefix="/audit", tags=["Audit"])
 
 
 @router.get("/verify", response_model=AuditVerifyOut)
 async def verify_chain(session: SessionDep, _: AuditorUser) -> AuditVerifyOut:
-    """校验哈希链完整性；返回第一条断裂记录的序号。"""
+    """Verify chain."""
     ok, bad, msg, tip = await audit.verify(session)
     chain = await audit.read_chain(session)
     return AuditVerifyOut(

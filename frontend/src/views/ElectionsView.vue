@@ -13,6 +13,8 @@ const watching = ref<number | null>(null)
 async function load() {
   try {
     elections.value = await api.elections()
+    const firstOpen = elections.value.find((e) => e.status === 'open')
+    if (firstOpen) watch(firstOpen.id)
   } catch (e) {
     error.value = (e as Error).message
   }
@@ -52,21 +54,21 @@ onMounted(load)
   <div class="container page">
     <header class="page-head">
       <div>
-        <h1 class="page-title">选举列表</h1>
+        <h1 class="page-title">Elections</h1>
         <p class="page-sub">
-          共 {{ elections.length }} 场选举
-          <template v-if="openCount > 0">· 你有 {{ openCount }} 场待投票</template>
+          {{ elections.length }} elections
+          <template v-if="openCount > 0">· {{ openCount }} awaiting your vote</template>
         </p>
       </div>
       <span class="live" :class="{ on: connected }">
         <span class="live-dot" aria-hidden="true"></span>
-        {{ connected ? '实时更新中' : '实时推送未连接' }}
+        {{ connected ? 'Live updates on' : 'Live updates offline' }}
       </span>
     </header>
 
     <div v-if="error" class="alert alert-danger" role="alert">{{ error }}</div>
 
-    <div v-if="!elections.length && !error" class="card empty">暂无选举</div>
+    <div v-if="!elections.length && !error" class="card empty">No elections yet</div>
 
     <ul class="election-list">
       <li
@@ -80,22 +82,22 @@ onMounted(load)
           <div class="election-title-row">
             <h2 class="election-title">{{ e.title }}</h2>
             <span class="badge" :class="statusClass(e.status)">{{ e.status_label }}</span>
-            <span v-if="e.my_vote_status === 'VOTED'" class="badge badge-open">已投票</span>
+            <span v-if="e.my_vote_status === 'VOTED'" class="badge badge-open">Voted</span>
           </div>
 
           <p class="election-meta">
-            <span>{{ e.tally_method === 'irv' ? '排序复选制' : '单选制' }}</span>
+            <span>{{ e.tally_method === 'irv' ? 'Ranked choice' : 'First past the post' }}</span>
             <span class="sep" aria-hidden="true">·</span>
-            <span>{{ e.positions.reduce((n, p) => n + p.candidates.length, 0) }} 名候选</span>
+            <span>{{ e.positions.reduce((n, p) => n + p.candidates.length, 0) }} candidates</span>
             <template v-if="e.closes_at">
               <span class="sep" aria-hidden="true">·</span>
-              <span>截止 {{ e.closes_at.replace('T', ' ').slice(0, 16) }}</span>
+              <span>Closes {{ e.closes_at.replace('T', ' ').slice(0, 16) }}</span>
             </template>
           </p>
 
           <div class="turnout">
             <div class="turnout-head">
-              <span class="muted text-xs">投票率</span>
+              <span class="muted text-xs">Turnout</span>
               <span class="num text-sm">
                 <strong>{{ percent(e) }}%</strong>
                 <span class="muted">
@@ -115,19 +117,21 @@ onMounted(load)
             class="btn"
             @click="goVote(e)"
           >
-            去投票
+            Vote now
           </button>
           <button
             v-else-if="e.status === 'closed' || e.status === 'published'"
             class="btn btn-ghost"
             @click="goVote(e)"
           >
-            查看结果
+            View results
           </button>
           <span v-else-if="e.my_vote_status === 'VOTED'" class="muted text-sm done">
-            已完成
+            Completed
           </span>
-          <span v-else class="muted text-sm done">尚未开放</span>
+          
+          <span v-else-if="e.status === 'open'" class="muted text-sm done">Voters only</span>
+          <span v-else class="muted text-sm done">Not open yet</span>
         </div>
       </li>
     </ul>

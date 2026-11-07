@@ -1,45 +1,49 @@
-# 选举管理与投票系统 (Election Management & Voting System)
+# Election Management & Voting System
 
-> COMP 3500SEF / 8500SEF / S350F — 软件工程 小组项目
-> 选题 2：Election Management and Voting System
+> COMP 3500SEF / 8500SEF — Software Engineering, group project
+> Topic 2: Election Management and Voting System
 
-一个**可运行、可测试、可审计**的选举系统。工程重点不是界面，而是解决选举领域最核心的矛盾：
+A **runnable, testable and auditable** election system. The engineering focus is not the interface —
+it is resolving the central tension in any election system:
 
-> **匿名性要求查不出谁投了谁，可审计性又要求能查出有没有人作弊 —— 这两个要求互相打架。**
+> **Anonymity requires that no one can trace a ballot back to a voter.
+> Auditability requires that cheating can be detected. These two demands conflict.**
 
-我们用**数据结构**和**数据库约束**同时满足它们，而不是靠"我们承诺不去查日志"。
+We satisfy both with **data structure** and **database constraints**, rather than by promising
+"we will not read the logs".
 
 ---
 
-## 一、技术栈
+## 1. Technology stack
 
-| 层次 | 技术 | 说明 |
+| Layer | Technology | Notes |
 |---|---|---|
-| 前端 | **Vue 3 + TypeScript** | Vite · Pinia · Vue Router · ECharts · Axios |
-| 实时推送 | **SSE（Server-Sent Events）** | 浏览器 `EventSource` ↔ FastAPI `StreamingResponse` |
-| 后端 | **Python 3.11+ + FastAPI** | Pydantic v2 · SQLAlchemy 2.0 (async) · Uvicorn |
-| 数据库 | **PostgreSQL 16** | 唯一约束 + 事务保证"一人一票" |
-| 缓存 | **Redis 7** | 会话 / 结果缓存 / SSE 多实例发布订阅 |
+| Frontend | **Vue 3 + TypeScript** | Vite · Pinia · Vue Router · ECharts · Axios |
+| Real-time | **SSE (Server-Sent Events)** | browser `EventSource` ↔ FastAPI `StreamingResponse` |
+| Backend | **Python 3.11+ + FastAPI** | Pydantic v2 · SQLAlchemy 2.0 (async) · Uvicorn |
+| Database | **PostgreSQL 16** | unique constraints and transactions guarantee one vote per voter |
+| Cache | **Redis 7** | sessions · caching · SSE fan-out across instances |
 
-> 开发环境无 PostgreSQL / Redis 时自动回退到 **SQLite + 进程内发布订阅**，
-> 功能完全一致，只是不支持多实例部署。切换只需改 `.env` 一行。
+> Without PostgreSQL / Redis the app falls back to **SQLite + in-process pub/sub**.
+> Behaviour is identical; only multi-instance deployment is unavailable. Switching is a one-line
+> change in `.env`.
 
 ---
 
-## 二、快速开始
+## 2. Quick start
 
-### 后端（无需安装数据库）
+### Backend (no database server required)
 
 ```bash
 cd backend
 pip install -r requirements.txt
-python -m app.seed                    # 生成演示数据
+python -m app.seed                    # generate demo data
 uvicorn app.main:app --reload --port 8770
 ```
 
-- API 文档：**http://127.0.0.1:8770/docs**（FastAPI 自动生成，可在线调试）
+- Interactive API documentation: **http://127.0.0.1:8770/docs**
 
-### 前端
+### Frontend
 
 ```bash
 cd frontend
@@ -47,147 +51,150 @@ npm install
 npm run dev                           # http://localhost:5173
 ```
 
-> Vite 已配置 `/api` 代理到 `127.0.0.1:8770`，打开 5173 即可，无需处理跨域。
+Vite proxies `/api` to `127.0.0.1:8770`, so open port 5173 and no CORS configuration is needed.
 
-### 演示账号
+### Demo accounts
 
-| 角色 | 学号 | 密码 |
+| Role | Student ID | Password |
 |---|---|---|
-| 管理员 | `ADMIN001` | `admin12345` |
-| 审计员 | `AUDIT001` | `audit12345` |
-| 选民 | `HK100000` – `HK100029`（共 30 个） | `voter12345` |
+| Administrator | `ADMIN001` | `admin12345` |
+| Auditor | `AUDIT001` | `audit12345` |
+| Voter | `HK100000` – `HK100029` (30 accounts) | `voter12345` |
 
-### 切换到 PostgreSQL + Redis
+### Switching to PostgreSQL + Redis
 
 ```bash
-docker compose up -d                  # 起 PostgreSQL 16 + Redis 7
-cp .env.example .env                  # 按需修改 DATABASE_URL / REDIS_URL
+docker compose up -d                  # PostgreSQL 16 + Redis 7
+cp .env.example .env                  # edit DATABASE_URL and REDIS_URL
 cd backend && python -m app.seed
 ```
 
 ---
 
-## 三、目录结构
+## 3. Repository layout
 
 ```
 .
-├── backend/                  正式版后端（FastAPI）
+├── backend/                  FastAPI service
 │   ├── app/
-│   │   ├── main.py             应用组装（不写业务逻辑）
-│   │   ├── config.py           唯一读取环境变量的地方
-│   │   ├── db.py               异步引擎与会话
-│   │   ├── models.py           ORM 模型 + 唯一约束
-│   │   ├── schemas.py          Pydantic 请求/响应（自动 OpenAPI）
-│   │   ├── security.py         bcrypt / JWT / AES-GCM 选票加密
-│   │   ├── deps.py             鉴权依赖（角色控制）
-│   │   ├── domain/             纯逻辑：状态机 / 哈希链 / 计票策略
-│   │   ├── services/           投票 / 结果 / 审计 / 发布订阅
-│   │   ├── api/                auth / elections / votes / results / audit / events
-│   │   └── seed.py             演示数据
-│   ├── tests/                  40 个测试
+│   │   ├── main.py             application assembly (no business logic)
+│   │   ├── config.py           the only place that reads environment variables
+│   │   ├── db.py               async engine and session factory
+│   │   ├── models.py           ORM models and unique constraints
+│   │   ├── schemas.py          Pydantic request/response models (auto OpenAPI)
+│   │   ├── security.py         bcrypt, JWT, AES-GCM ballot encryption
+│   │   ├── deps.py             authentication and role dependencies
+│   │   ├── domain/             state machine, hash chain, tally strategies
+│   │   ├── services/           voting, results, audit, pub/sub
+│   │   ├── api/                auth, elections, votes, results, audit, events
+│   │   └── seed.py             demo dataset
+│   ├── tests/                  44 automated tests
 │   └── requirements.txt
-├── frontend/                 正式版前端（Vue 3 + TypeScript）
+├── frontend/                 Vue 3 + TypeScript
 │   └── src/
-│       ├── views/              4 步流程 + 管理台
-│       ├── stores/             Pinia 登录态
-│       ├── composables/        SSE 订阅
-│       └── api.ts              REST 客户端与类型定义
-├── docs/                     项目文档
-│   ├── 01-project-plan.md      业务流程 / 功能拆解 / 技术选型
+│       ├── views/              four-step flow plus admin console
+│       ├── stores/             Pinia authentication state
+│       ├── composables/        SSE subscription
+│       ├── styles/             design tokens
+│       └── api.ts              typed REST client
+├── docs/                     project documentation
+│   ├── 01-project-plan.md      process, feature breakdown, technology choice
 │   ├── 02-flowchart-with-tech-stack.md
-│   ├── diagrams/               流程与架构图（simple 白话版 / detailed 详细版）
-│   └── templates/              SRS / ADR / API 契约 / 会议纪要模板
-├── prototype/                早期探索原型（Flask + SQLite，仅作历史留存）
+│   ├── 03-api-integration-guide.md
+│   ├── diagrams/               rendered diagrams (simple and detailed)
+│   └── templates/              SRS, ADR, API contract, meeting minutes
 ├── docker-compose.yml        PostgreSQL + Redis
 └── .env.example
 ```
 
-> `prototype/` 是项目早期用 Flask + SQLite 快速做的可运行原型，
-> 作用是在正式开发前验证"这个选题长什么样"（对应课程 Lecture 2 的原型法）。
-> 它**不是**最终交付代码，保留是为了记录开发过程。
+---
+
+## 4. Two core design decisions
+
+### 4.1 Anonymity: ballots and the voter roll are physically separated
+
+```
+voter_roll   who voted      user_id / has_voted      no ballot_id
+ballots      what was cast  anon_id / choice_enc     no user_id
+receipts     proof          code → given to the voter only
+votes_log    one vote       UNIQUE(position_id, user_id)
+```
+
+There is **no field or foreign key** anywhere that can link a voter to a choice.
+Anonymity is not a promise, it is a property of the schema — and the tests assert that the
+linking columns do not exist.
+
+### 4.2 One vote per voter: arbitrated by a **database unique constraint**
+
+The vote transaction does **not** read `has_voted` and then insert (check-then-act, which allows a
+double vote under concurrency). It inserts into `votes_log`, which carries
+`UNIQUE(position_id, user_id)`, and lets the database arbitrate.
+
+A concurrency test submits the same ballot eight times in parallel: **exactly one succeeds**.
 
 ---
 
-## 四、两个核心设计
+## 5. Constraints on real-time updates
 
-### ① 匿名性：选票与选民册**物理隔离**
-
-```
-voter_roll   谁投了      user_id / has_voted      ※ 没有 ballot_id
-ballots      投了什么    anon_id / choice_enc     ※ 没有 user_id
-receipts     凭证        code → 只发给选民本人
-votes_log    一人一票    UNIQUE(position_id, user_id)
-```
-
-系统里**不存在**任何能把"某选民"与"其选择"关联起来的字段或外键。
-匿名性不是承诺，而是数据模型里没有这条边 —— 这一点有测试直接断言表结构。
-
-### ② 一人一票：由**数据库唯一约束**仲裁
-
-投票时**不写**"先查询是否已投票，再插入"（check-then-act，并发下会双投），
-而是直接插入带 `UNIQUE(position_id, user_id)` 的记录，让数据库裁决。
-
-并发测试证明：同一选民并发提交 8 次，**恰好 1 次成功**。
-
----
-
-## 五、SSE 实时推送的约束
-
-| 频道 | 内容 | 何时可推送 |
+| Channel | Content | When it may be pushed |
 |---|---|---|
-| `/api/v1/events/turnout` | 投票率（聚合值） | 投票进行中 |
-| `/api/v1/events/results` | 各候选人票数 | **仅选举截止后** |
+| `/api/v1/events/turnout` | turnout (aggregate) | while voting is open |
+| `/api/v1/events/results` | per-candidate counts | **only after the election closes** |
 
-> 真实选举在投票期间不公布各候选人票数 —— 公布会引导后续投票行为，损害公平性。
-> 这一条写进领域需求（DR-1），前后端都遵守：投票期间后端**不提供**票数接口，
-> 前端即使想显示也拿不到数据。
+> Real elections do not publish running totals while voting is open: doing so influences later
+> voters and undermines fairness. This is recorded as domain requirement DR-1, and the backend
+> simply does not expose the counts until the election is closed.
 
 ---
 
-## 六、测试
+## 6. Testing
 
 ```bash
 cd backend
-pytest -q                        # 40 个测试
-pytest tests/test_api.py -q      # 接口与集成
+pytest -q                        # 44 tests
+pytest tests/test_api.py -q      # API and integration tests
 ```
 
-| 层次 | 覆盖内容 |
+| Level | Coverage |
 |---|---|
-| 领域层 | 状态机全部迁移、FPTP / IRV 计票、哈希链篡改与删除检测 |
-| 接口层 | 登录、投票、重复投票、凭证核验、状态门控、越权访问 |
-| 不变量 | 选票数 == 投票记录数 == 凭证数 |
-| 并发 | 同一选民并发投票只有 1 票成功 |
-| SSE | 协议头、首帧格式、发布订阅投递 |
+| Domain | every state transition, FPTP and IRV tallying, hash-chain tamper and deletion detection |
+| API | login, voting, duplicate vote, receipt verification, lifecycle gating, authorisation |
+| Invariants | ballots == vote records == receipts |
+| Concurrency | concurrent duplicate votes: exactly one succeeds |
+| SSE | protocol headers, first frame, pub/sub delivery |
 
 ---
 
-## 七、API 一览（完整文档见 `/docs`）
+## 7. API summary (full reference at `/docs`)
 
-| 方法 | 路径 | 说明 |
+| Method | Path | Description |
 |---|---|---|
-| POST | `/api/v1/auth/register` | 注册 |
-| POST | `/api/v1/auth/login` | 登录，返回 JWT |
-| GET | `/api/v1/auth/me` | 当前用户 |
-| GET | `/api/v1/elections` | 可参与的选举列表 |
-| POST | `/api/v1/elections` | 创建选举（管理员） |
-| PATCH | `/api/v1/elections/{id}/status` | 状态变更（仅状态机允许的迁移） |
-| POST | `/api/v1/elections/{id}/votes` | 投票 |
-| GET | `/api/v1/receipts/{code}` | 凭证核验（不返回选择内容） |
-| GET | `/api/v1/elections/{id}/results` | 结果（截止后才公开） |
-| POST | `/api/v1/elections/{id}/results/publish` | 计票并公示（管理员） |
-| GET | `/api/v1/elections/{id}/integrity` | 完整性不变量校验 |
-| GET | `/api/v1/audit/verify` | 审计哈希链校验 |
-| GET | `/api/v1/events/turnout` | SSE：投票率 |
-| GET | `/api/v1/events/results` | SSE：结果（仅截止后） |
+| POST | `/api/v1/auth/register` | register |
+| POST | `/api/v1/auth/login` | sign in, returns a JWT |
+| GET | `/api/v1/auth/me` | current user |
+| GET | `/api/v1/elections` | elections visible to the caller |
+| POST | `/api/v1/elections` | create an election (admin) |
+| PATCH | `/api/v1/elections/{id}/status` | change status (state machine only) |
+| POST | `/api/v1/elections/{id}/votes` | cast a vote |
+| GET | `/api/v1/receipts/{code}` | verify a receipt (never reveals the choice) |
+| GET | `/api/v1/elections/{id}/results` | results (only after closing) |
+| POST | `/api/v1/elections/{id}/results/publish` | tally and publish (admin) |
+| GET | `/api/v1/elections/{id}/integrity` | invariant checks |
+| GET | `/api/v1/audit/verify` | verify the audit hash chain |
+| GET | `/api/v1/events/turnout` | SSE: turnout |
+| GET | `/api/v1/events/results` | SSE: results (after closing only) |
 
 ---
 
-## 八、诚实声明（保证边界）
+## 8. Honest statement of guarantees
 
-- **选票加密**是应用层 AES-GCM，用于防止"只读数据库的人直接看到选择"；
-  **不是**端到端可验证加密（如 Paillier 同态计票），不声称达到真实选举的密码学强度。
-- **哈希链**只能**检测**篡改，不能防止能重算整条链的攻击者 ——
-  除非把链尾哈希对外公示做外部锚定。
-- 当前使用 JWT 认证；真实选举通常还需多因素认证与硬件令牌。
-- 生产部署需启用 HTTPS、更换 ASGI 服务器配置、关闭 `/docs`。
+- **Ballot encryption** is application-level AES-GCM. It prevents someone with read-only database
+  access from seeing a voter's choice. It is **not** end-to-end verifiable encryption
+  (such as homomorphic tallying) and we do not claim the cryptographic strength of a national
+  election system.
+- The **hash chain** can only **detect** tampering. It cannot stop an attacker who recomputes the
+  entire chain — unless the chain tip is published externally as an anchor.
+- Authentication uses JWT. A real election would additionally require multi-factor authentication
+  and hardware tokens.
+- A production deployment must enable HTTPS, use a production ASGI server configuration and
+  disable `/docs`.

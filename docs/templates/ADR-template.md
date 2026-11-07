@@ -1,256 +1,41 @@
-# 架构决策记录（ADR）
+# Architecture Decision Record
 
-> 依据 `Lecture 6` 第 3 页 —— "Architectural design is the critical link between design and requirements engineering"。
-> ADR 的作用：把**每个重要技术选择的理由与代价**记下来，让评审能看懂"为什么这样做"。
-
-## 使用方法
-
-- 一个决策一份 ADR，编号递增
-- **不要只写"我们选了 X"**，必须写"为什么不选 Y"和"这个选择的代价"
-- 状态：Proposed（提议中） / Accepted（已采纳） / Superseded（被替代）
+> Use one record per decision. Keep them short. A decision without alternatives considered is not
+> an ADR, it is a note.
 
 ---
 
-## ADR-001：系统架构采用分层单体，而非微服务
+## ADR-001: Title
 
-| 项目 | 内容 |
-|---|---|
-| **状态** | Proposed |
-| **日期** | ____-__-__ |
-| **决策者** | ____ |
-| **关联需求** | NFR-1 性能、NFR-2 可靠性 |
+- **Status**: proposed | accepted | superseded by ADR-00X
+- **Date**: YYYY-MM-DD
+- **Deciders**: names
+- **Related**: requirements or other ADRs
 
-### 背景
+### Context
 
-系统需要支持选民投票、管理员配置选举、审计员核查。团队规模 7 人，开发窗口约 8 周。
+What situation forces a decision. Include the constraints: time, team skills, course requirements.
 
-### 决策
+### Options considered
 
-采用**分层单体架构**：表示层（Vue）→ 用户通信层（Nginx/API）→ 应用逻辑层 → 数据层（PostgreSQL + Redis）。
+| Option | Advantages | Disadvantages |
+|---|---|---|
+| A | | |
+| B | | |
+| C | | |
 
-**架构模式依据**：`Lecture 6`
-- 本项目属于**事务处理系统**（Transaction Processing System），课程第 47–51 页给出了这类系统的标准分层架构；
-- 第 27 页 Layered architecture 模式："当开发工作分散到多个团队、每队负责一层时使用"，正好对应我们 7 人分工。
+### Decision
 
-### 备选方案与不选的理由
+What we chose, in one sentence.
 
-| 方案 | 不选的理由 |
-|---|---|
-| 微服务 | 部署与联调成本高；7 人 8 周会把时间耗在运维而非工程活动上；本项目并发规模不需要独立伸缩 |
-| 纯前端 + Serverless | 事务与唯一约束难以保证；学习成本高 |
-| 单体但前端服务端渲染（如 Django 模板） | 前后端分离更贴合团队分工；实时结果需要独立 SSE 通道 |
+### Rationale
 
-### 代价（Cons）
+Why this option wins against the others, in terms of the non-functional requirements that matter.
 
-- 逻辑上单点：应用层是单一部署单元，无法按模块独立扩容
-- 后期若需拆分，需先做模块边界治理
+### Consequences
 
-### 影响
+What becomes easy and what becomes harder. What we are now committed to.
 
-- 优点：接口集中在网关、事务边界清晰、便于统一鉴权
-- 演化为微服务的可能性写进 SRS 第 8 章「系统演化」
+### Verification
 
----
-
-## ADR-002：用数据库唯一约束保证"一人一票"，而非应用层检查
-
-| 项目 | 内容 |
-|---|---|
-| **状态** | Proposed |
-| **日期** | ____-__-__ |
-| **决策者** | ____ |
-| **关联需求** | FR-3、NFR-3、NFR-4 |
-
-### 背景
-
-需要绝对保证同一选民在同一职位上最多一票。应用层的"先查询是否已投票，再写入"在并发下可能两个请求都读到"未投票"，导致**双投**。
-
-### 决策
-
-在投票记录表上建立**唯一约束**，由数据库仲裁：
-
-```sql
-UNIQUE (election_id, position_id, user_id)
-```
-
-投票时**直接尝试插入**；若违反约束则回滚并返回"已投过票"。
-
-### 备选方案与不选的理由
-
-| 方案 | 不选的理由 |
-|---|---|
-| 应用层 `if (!hasVoted) { ... }` | check-then-act 竞态，并发下不可靠 |
-| 应用层加分布式锁（Redis） | 依赖外部组件可用性；锁超时会引入新的失败模式 |
-| 串行化隔离级别 | 性能代价大，且仍需约束兜底 |
-
-### 代价（Cons）
-
-- 错误处理需正确翻译数据库异常，避免把约束冲突暴露成 500
-- 约束变更需走迁移脚本
-
-### 验证方式
-
-并发测试：同一选民并发提交 N 次，断言**恰好 1 次成功**。
-
----
-
-## ADR-003：选票与选民册物理隔离，以保证匿名性
-
-| 项目 | 内容 |
-|---|---|
-| **状态** | Proposed |
-| **日期** | ____-__-__ |
-| **决策者** | ____ |
-| **关联需求** | UR-5、DR-2、NFR-5 |
-
-### 背景
-
-选举系统的核心矛盾：**匿名性**要求查不出谁投了谁，**可审计性**要求能查清有没有作弊。如果一张表里同时存 `user_id` 和 `choice`，匿名性将完全依赖"我们承诺不去查"。
-
-### 决策
-
-**数据结构层面隔离**：
-
-```
-voter_roll(选民册)  →  记录「谁投了」：user_id, has_voted, voted_at
-                        ※ 不包含 ballot_id
-
-ballots(选票)       →  记录「投了什么」：ballot_id, anon_id, choice, cast_at
-                        ※ 不包含 user_id
-
-receipts(凭证)      →  唯一桥梁：code, ballot_id, anon_id
-                        ※ code 仅发给选民本人
-```
-
-系统在任何时刻都**不存在**可关联"某个选民"与"其选择"的字段或外键。
-
-### 备选方案与不选的理由
-
-| 方案 | 不选的理由 |
-|---|---|
-| 单表存 user_id + choice，靠权限控制 | 匿名性变成"信任"，无法论证；DBA 可直接反查 |
-| 选票内容加密但保留 user_id 外键 | 密钥一旦泄漏即可反查；仍是可关联的边 |
-| 完全同态加密计票 | 密码学强度高，但实现复杂度远超课程项目范围 |
-
-### 代价（Cons）
-
-- 无法回答"某位具体选民投了什么"（这是**有意为之**，不是缺陷）
-- 计票需从 `ballots` 独立读取，与选民册不连接
-- 需要额外的凭证机制让选民自证"票已计入"
-
-### 影响
-
-- 合法审计只能确认"此人是否已投票"，不能确认"投给了谁"
-- 报告需诚实声明保证边界
-
----
-
-## ADR-004：计票采用策略模式，支持计票规则可插拔
-
-| 项目 | 内容 |
-|---|---|
-| **状态** | Proposed |
-| **日期** | ____-__-__ |
-| **决策者** | ____ |
-| **关联需求** | SRS §8 系统演化 |
-
-### 背景
-
-计票规则可能变化（单选制 → 排序复选制 → 比例代表制）。若把计票写死在业务流程里，每次变更都要改多个模块。
-
-### 决策
-
-定义计票接口，各算法实现为独立类：
-
-```java
-interface TallyStrategy {
-    TallyResult tally(List<Ballot> ballots, int candidateCount);
-}
-```
-
-计票时按选举配置选择实现。计票逻辑是**纯函数**，不访问数据库，因此可完整单元测试。
-
-### 代价（Cons）
-
-- 抽象层增加文件数量
-- 计票结果结构需兼容不同算法（如 IRV 需记录逐轮数据）
-
-### 影响
-
-- 新增计票法只需加一个实现类，符合 `Lecture 6` "层接口变化只影响相邻层"
-- 可直接作为报告「软件演化」章节的证据
-
----
-
-## ADR-005：技术栈选型（前端 Vue / 后端 __ / 数据库 PostgreSQL / 缓存 Redis）
-
-| 项目 | 内容 |
-|---|---|
-| **状态** | Proposed |
-| **日期** | ____-__-__ |
-| **决策者** | ____ |
-
-### 决策
-
-| 层次 | 选型 | 具体技术 | 一句话理由 |
-|---|---|---|---|
-| 前端 | **Vue 3** | TypeScript + Vite + Pinia + Vue Router + ECharts | 组件化适合"列表 + 表单 + 图表"；团队上手成本低 |
-| 实时推送 | **SSE** | 浏览器 `EventSource` ↔ FastAPI `StreamingResponse` | 单向推送匹配"服务器 → 浏览器"，比 WebSocket 简单并自带重连 |
-| 后端 | **Python + FastAPI** | Python 3.11+ / FastAPI / SQLAlchemy 2.0 / Pydantic v2 / Uvicorn | 见下方决策理由 |
-| 数据库 | **PostgreSQL 16** | `psycopg` / Alembic 迁移 | 事务与唯一约束原生支持"一人一票" |
-| 缓存 | **Redis 7** | `redis-py`（异步） | 会话存储 + 结果缓存 + SSE 多实例发布订阅 |
-
-### 决策理由（为什么最终选 FastAPI）
-
-1. **团队以 Python 为主**：课程已有 Python 基础，8 周开发窗口内学习成本最低 —— 时间应留给需求工程与测试（这两项直接对应评分表）。
-2. **Pydantic v2 天然是接口契约**：请求/响应模型即文档，自动生成 OpenAPI，与 `API-contract-template.md` 一一对应，减少前后端对不齐的风险。
-3. **SSE 实现极简**：FastAPI 的 `StreamingResponse` 直接返回事件流，无需额外依赖。
-4. **异步 IO 契合本项目**：投票高峰是大量短请求 + 长连接 SSE，`async` 比同步框架更省资源。
-5. **事务控制足够**：`SQLAlchemy 2.0` + `asyncpg` 可精确控制事务边界；"一人一票"的最终保证由**数据库唯一约束**承担，不依赖框架层。
-
-### 备选方案与不选的理由
-
-| 方案 | 不选的理由 |
-|---|---|
-| Java + Spring Boot | 事务与类型检查更强，但团队无 Java 经验，学习成本高；本项目的一致性由数据库约束保证，框架优势难以体现 |
-| Django | 封装过重、学习曲线长、扩展不灵活；以 API 为中心 + 前后端分离的项目中，DRF 仍比 FastAPI 更重 |
-| Flask | 轻量但缺少异步与内建校验；Pydantic 与自动 OpenAPI 都要自己接 |
-| Node.js + NestJS | 类型与分层优秀，但与团队现有 Python 技能栈不匹配 |
-
-### 代价（Cons）
-
-- **类型在运行时校验**：Pydantic 校验发生在运行时而非编译期，字段错误只能靠测试发现 → 对策：为每个接口写契约测试（成员 7）
-- 异步代码易写出"忘记 await"这类缺陷 → 对策：统一代码规约 + review
-- 引入 Redis 增加一个部署组件 → 报告需说明缓存与数据库的一致性策略
-- 需要自己维护 Alembic 迁移，团队要约定"谁改 schema 谁出迁移"
-
----
-
-## ADR 模板（复制此段新建）
-
-```markdown
-## ADR-00X：<决策标题>
-
-| 项目 | 内容 |
-|---|---|
-| **状态** | Proposed |
-| **日期** | |
-| **决策者** | |
-| **关联需求** | |
-
-### 背景
-<问题是什么？为什么需要决策？>
-
-### 决策
-<我们决定做什么？>
-
-### 备选方案与不选的理由
-| 方案 | 不选的理由 |
-|---|---|
-
-### 代价（Cons）
-<这个选择的缺点与风险 —— 必须诚实填写>
-
-### 影响
-<对架构、开发、测试、演化的影响>
-```
+How we will know the decision was right. Which test or measurement demonstrates it.

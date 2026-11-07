@@ -1,364 +1,368 @@
-# 选举管理与投票系统 — 项目方案（流程 / 功能拆解 / 技术选型）
+# Project Plan — Process, Features and Technology Choice
 
-> COMP 3500SEF · 8500SEF 软件工程小组项目
-> 选题：Election Management and Voting System
-> 配套：7 人分工表（成员 1–7）
+> COMP 3500SEF / 8500SEF — Software Engineering, group project
+> Topic: Election Management and Voting System
+> Team: 7 members
 
-本文对应团队要求的前两步：
-1. **理清处理流程 → 画出流程图 → 拆解功能 → 提取前后端功能列表**
-2. **理解需求，根据需求选择开发语言及框架**
+This document covers the first two steps of our plan:
 
-文档中的图使用 Mermaid 语法，可在 GitHub / VS Code（Markdown Preview Mermaid Support）/ Typora 直接渲染。
+1. **Clarify the process, draw the flows, decompose the features, extract the frontend and backend feature lists**
+2. **Understand the requirements, then choose language and framework based on them**
+
+All diagrams are Mermaid and render directly on GitHub or in VS Code.
 
 ---
 
-## 一、理清处理流程
+## 1. Process
 
-### 1.1 系统上下文（Context Model）
+### 1.1 System context
 
-对应 Lecture 5 的 context perspective：先划清"系统边界"，明确哪些在系统内、哪些是外部系统。
+Following the context perspective from Lecture 5, we first fix the system boundary.
 
 ```mermaid
 flowchart LR
-    Voter[选民/学生]
-    Admin[选举管理员/EC]
-    Auditor[审计员/第三方]
+    Voter[Voter / student]
+    Admin[Election administrator]
+    Auditor[Auditor / third party]
 
-    subgraph SYS["选举管理与投票系统（系统边界内）"]
-        FE[前端 Vue 应用]
-        API[后端 API 服务]
+    subgraph SYS["Election system (inside the boundary)"]
+        FE[Vue frontend]
+        API[FastAPI service]
         DB[(PostgreSQL)]
         CACHE[(Redis)]
     end
 
-    SSO[学校统一身份认证<br/>校外系统]
-    MAIL[邮件/通知服务<br/>校外系统]
+    SSO[University identity provider<br/>external system]
+    MAIL[Email and notifications<br/>external system]
 
     Voter --> FE
     Admin --> FE
     Auditor --> FE
-    FE -->|HTTPS / REST + SSE| API
+    FE -->|HTTPS REST and SSE| API
     API --> DB
     API --> CACHE
-    API -.->|身份核验| SSO
-    API -.->|通知| MAIL
+    API -.->|identity check| SSO
+    API -.->|notifications| MAIL
 ```
 
-**边界决策**：身份认证不自己做，走学校 SSO / 学号库；系统只负责"选举"这件事。
-写进报告的价值：Lecture 5 明确说"划边界是政治判断"，说明我们主动拒绝了"做完整身份系统"的范围膨胀。
+**Boundary decision**: identity provision is not built in-house; it is delegated to the university
+identity provider. The system is responsible only for elections. Lecture 5 notes that defining a
+boundary is a political judgement; here it is how we refuse scope creep.
 
-### 1.2 核心业务处理流程（Activity Diagram）
-
-这是**选民投票**的主流程，也是整个系统最需要严密的路径。
+### 1.2 Core voting flow (activity diagram)
 
 ```mermaid
 flowchart TD
-    A([开始]) --> B[访问系统]
-    B --> C{是否已登录?}
-    C -->|否| D[学号 + 密码登录]
-    D --> E{身份核验通过?}
-    E -->|否| D
-    E -->|是| F[获取可参与选举列表]
-    C -->|是| F
-    F --> G{是否有进行中的选举?}
-    G -->|否| H[显示「暂无可投票选举」]
-    G -->|是| I[选择一场选举]
-    I --> J{该选举状态是否为 open?}
-    J -->|否| K[提示：未开始/已截止/已公布]
-    J -->|是| L{我是否已投票?}
-    L -->|是| M[提示：已完成投票<br/>显示凭证]
-    L -->|否| N[展示候选人]
-    N --> O[选择候选人]
-    O --> P{选择合法?}
-    P -->|否| N
-    P -->|是| Q[确认投票]
-    Q --> R{服务端校验<br/>状态/资格/唯一性}
-    R -->|不通过| S[返回错误并回滚]
+    A([Start]) --> B[Open the site]
+    B --> C{Signed in?}
+    C -->|no| D[Sign in with student ID and password]
+    D --> E{Credentials valid?}
+    E -->|no| D
+    E -->|yes| F[Load elections for this voter]
+    C -->|yes| F
+    F --> G{Any open election?}
+    G -->|no| H[Show no open elections]
+    G -->|yes| I[Select an election]
+    I --> J{Status is open?}
+    J -->|no| K[Show scheduled or closed or published]
+    J -->|yes| L{Already voted?}
+    L -->|yes| M[Show the existing receipt]
+    L -->|no| N[Show candidates]
+    N --> O[Select a candidate]
+    O --> P{Selection valid?}
+    P -->|no| N
+    P -->|yes| Q[Confirm]
+    Q --> R{Server checks status, eligibility and uniqueness}
+    R -->|reject| S[Return an error and roll back]
     S --> N
-    R -->|通过| T[写入选票<br/>记录「已投票」标记<br/>生成凭证码]
-    T --> U[返回凭证码]
-    U --> V[选民保存凭证]
-    V --> W([结束])
+    R -->|accept| T[Write ballot, vote record and receipt]
+    T --> U[Return the receipt code]
+    U --> V[Voter saves the code]
+    V --> W([End])
 ```
 
-### 1.3 选举生命周期（State Diagram）
-
-状态机是**必须画**的图：它把"什么时候能投、什么时候能计票"变成单一真相来源，避免出现"已截止还能投票"这类缺陷。
+### 1.3 Election lifecycle (state diagram)
 
 ```mermaid
 stateDiagram-v2
-    [*] --> 未开始: 管理员创建选举
-    未开始 --> 进行中: 到达开放时间 / 管理员开放
-    进行中 --> 已截止: 到达截止时间 / 管理员关闭
-    已截止 --> 已公布: 计票并公示
-    已公布 --> [*]
+    [*] --> Scheduled: administrator creates the election
+    Scheduled --> Open: opening time reached
+    Open --> Closed: closing time reached
+    Closed --> Published: tally and publish
+    Published --> [*]
 
-    note right of 未开始
-        可配置候选人
-        不可投票
+    note right of Scheduled
+        candidates configurable
+        no voting
     end note
-    note right of 进行中
-        可投票
-        不公开计票结果
+    note right of Open
+        voting allowed
+        results not public
     end note
-    note right of 已截止
-        不可投票
-        可计票
+    note right of Closed
+        no voting
+        tally allowed
     end note
-    note right of 已公布
-        结果公开
-        一切写入冻结
+    note right of Published
+        results public
+        writes frozen
     end note
 ```
 
-**关键约束（写进报告）**：状态只能沿箭头单向推进，**任何投票请求都必须先校验状态**，而不是只判断系统时间。因为"截止那一秒"存在竞态，用时间判断会漏票。
+**Key constraint**: a request is accepted based on **state**, not on a comparison with the current
+time. Time only advances the state; the state is the single source of truth. Comparing timestamps
+creates a race at the closing instant.
 
-### 1.4 投票时序（Sequence Diagram）
-
-对应 Lecture 5 的 interaction perspective，展示一次投票在系统内部如何完成。
+### 1.4 Voting sequence
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor V as 选民
-    participant FE as Vue 前端
-    participant API as 后端 API
-    participant SV as 业务服务
+    actor V as Voter
+    participant FE as Vue frontend
+    participant API as FastAPI router
+    participant SV as Domain service
     participant DB as PostgreSQL
 
-    V->>FE: 选择候选人并确认
-    FE->>API: POST /api/votes
-    API->>API: 校验会话与角色
-    API->>SV: castBallot(userId, electionId, choice)
+    V->>FE: select a candidate and confirm
+    FE->>API: POST /api/v1/elections/id/votes
+    API->>API: validate JWT and role
+    API->>SV: cast_ballot user, election, choice
     SV->>DB: BEGIN
-    SV->>DB: 查询选举状态
-    DB-->>SV: status = open
-    SV->>DB: 查询选民资格
-    DB-->>SV: 名册内且未投票
-    SV->>DB: INSERT ballot（匿名，不含 userId）
-    SV->>DB: INSERT votes_log（UNIQUE 约束）
-    alt 唯一约束冲突
-        DB-->>SV: 违反唯一约束
+    SV->>DB: read election status
+    DB-->>SV: status is open
+    SV->>DB: read voter roll entry
+    DB-->>SV: on the roll and eligible
+    SV->>DB: insert ballot without user id
+    SV->>DB: insert vote record with unique constraint
+    alt unique constraint violated
+        DB-->>SV: integrity error
         SV->>DB: ROLLBACK
-        SV-->>API: 重复投票错误
-        API-->>FE: 400 已投过票
-    else 成功
-        SV->>DB: 生成凭证码 / 更新已投票标记
+        SV-->>API: duplicate vote error
+        API-->>FE: 409 already voted
+    else inserted
+        SV->>DB: create receipt and mark the roll
+        SV->>DB: append the audit entry
         SV->>DB: COMMIT
-        SV-->>API: 凭证码
-        API-->>FE: 200 + 凭证码
-        FE-->>V: 显示凭证并提示保存
+        SV-->>API: receipt code
+        API-->>FE: 201 with the receipt code
+        FE-->>V: show the receipt and ask the voter to save it
     end
 ```
 
 ---
 
-## 二、功能拆解
+## 2. Feature decomposition
 
-### 2.1 模块划分（功能分解树）
+### 2.1 Module tree
 
 ```mermaid
 flowchart LR
-    ROOT[选举管理与投票系统]
+    ROOT[Election management and voting system]
 
-    ROOT --> M1[账号与权限]
-    ROOT --> M2[选举管理]
-    ROOT --> M3[投票]
-    ROOT --> M4[计票与结果]
-    ROOT --> M5[审计与安全]
-    ROOT --> M6[数据与运维]
+    ROOT --> M1[Accounts and roles]
+    ROOT --> M2[Election management]
+    ROOT --> M3[Voting]
+    ROOT --> M4[Tallying and results]
+    ROOT --> M5[Audit and security]
+    ROOT --> M6[Data and operations]
 
-    M1 --> M1a[注册/登录]
-    M1 --> M1b[学号唯一校验]
-    M1 --> M1c[角色权限]
-    M1 --> M1d[会话管理]
+    M1 --> M1a[Register and sign in]
+    M1 --> M1b[Student ID uniqueness]
+    M1 --> M1c[Role permissions]
+    M1 --> M1d[Session handling]
 
-    M2 --> M2a[创建/编辑选举]
-    M2 --> M2b[候选人管理]
-    M2 --> M2c[开放/关闭投票]
-    M2 --> M2d[状态机控制]
+    M2 --> M2a[Create and edit elections]
+    M2 --> M2b[Candidate management]
+    M2 --> M2c[Open and close voting]
+    M2 --> M2d[State machine]
 
-    M3 --> M3a[选举列表]
-    M3 --> M3b[选票提交]
-    M3 --> M3c[防重复投票]
-    M3 --> M3d[投凭证生成]
+    M3 --> M3a[Election list]
+    M3 --> M3b[Cast a ballot]
+    M3 --> M3c[Prevent duplicate votes]
+    M3 --> M3d[Issue a receipt]
 
-    M4 --> M4a[计票]
-    M4 --> M4b[结果汇总]
-    M4 --> M4c[实时结果推送 SSE]
-    M4 --> M4d[结果公示]
+    M4 --> M4a[Tally]
+    M4 --> M4b[Aggregate results]
+    M4 --> M4c[Real-time push over SSE]
+    M4 --> M4d[Publish results]
 
-    M5 --> M5a[审计日志]
-    M5 --> M5b[越权拦截]
-    M5 --> M5c[数据一致性校验]
+    M5 --> M5a[Audit log]
+    M5 --> M5b[Block unauthorised access]
+    M5 --> M5c[Invariant checks]
 
-    M6 --> M6a[数据库设计与迁移]
-    M6 --> M6b[Redis 缓存]
-    M6 --> M6c[演示数据]
-    M6 --> M6d[备份]
+    M6 --> M6a[Schema and migrations]
+    M6 --> M6b[Redis cache]
+    M6 --> M6c[Demo dataset]
+    M6 --> M6d[Backup]
 ```
 
-### 2.2 功能 → 前后端 → 负责人 对照表
+### 2.2 Feature ownership
 
-> 负责人编号对应团队分工表的成员 1–7。**每个功能都要有【前端】与【后端】两列归属**，这是拆解是否到位的检验标准。
+Member numbers refer to the team table. Every feature has both a frontend and a backend owner;
+that is the test of whether the decomposition is complete.
 
-| 模块 | 功能点 | 前端（谁） | 后端（谁） | 数据库（谁） | 测试（谁） |
+| Module | Feature | Frontend | Backend | Data | Test |
 |---|---|---|---|---|---|
-| 账号 | 学生注册（学号+密码） | 表单、校验提示（1） | 注册接口、学号重复校验、密码哈希（3） | users 表、唯一约束（5） | 注册流程/并发重复注册（6、7） |
-| 账号 | 登录/登出 | 登录页、态管理（1） | 会话/JWT（3） | 会话表或 Redis（5） | 登录失败/越权（7） |
-| 权限 | 三种角色（选民/管理员/审计员） | 按角色渲染菜单（1、2） | 角色鉴权中间件（3） | role 字段（5） | 越权请求拦截（7） |
-| 选举 | 创建/编辑选举 | 管理表单（2） | 创建接口、参数校验（4） | elections 表（5） | 必填/边界值（6） |
-| 选举 | 候选人配置 | 候选人列表编辑（2） | 增删改接口（4） | candidates 表（5） | 排序/重复候选（6） |
-| 选举 | 状态控制（开放/关闭） | 状态按钮（2） | 状态机、非法迁移拒绝（4） | status 字段 + 约束（5） | 全部迁移路径（7） |
-| 投票 | 可投选举列表 | 卡片列表（1） | 按资格过滤（4） | 查询优化（5） | 无选举/已投/已截止（6） |
-| 投票 | 提交选票 | 候选人单选/排序、确认弹窗（1） | 投票接口、事务（4） | 选票表 + 唯一定位（5） | 正常/并发/越权（7） |
-| 投票 | 防重复投票 | 友好错误提示（1） | 唯一约束兜底 + 错误翻译（4） | UNIQUE 约束（5） | **并发抢投（7）** |
-| 投票 | 凭证码 | 展示与截图提示（1） | 生成/校验接口（4） | receipts 表（5） | 凭证核验/防伪造（6） |
-| 计票 | 计票 | 结果页（2） | 计票服务（4） | 结果表（5） | 计票正确性（7） |
-| 计票 | 实时结果 | SSE 订阅与图表（2） | SSE 端点 + 事件推送（4） | Redis 缓存结果（5） | 断线重连（7） |
-| 审计 | 审计日志 | 日志列表（2） | 写入与查询接口（3） | audit_log 表（5） | 篡改检测（7） |
-| 运维 | 演示数据 | — | 生成脚本（4） | 种子数据（5） | 数据可重复生成（6） |
+| Accounts | Register | form and validation (1) | endpoint, uniqueness, hashing (3) | users table (5) | concurrent duplicate registration (6, 7) |
+| Accounts | Sign in and out | login page, state (1) | JWT (3) | sessions or Redis (5) | wrong password (7) |
+| Roles | Voter, admin, auditor | render by role (1, 2) | role dependency (3) | role column (5) | unauthorised request (7) |
+| Elections | Create and edit | admin form (2) | endpoint and validation (4) | elections table (5) | required fields (6) |
+| Elections | Candidates | candidate editor (2) | create and update (4) | candidates table (5) | ordering and duplicates (6) |
+| Elections | Status control | status buttons (2) | state machine (4) | status column (5) | every transition path (7) |
+| Voting | Eligible election list | cards (1) | filter by roll (4) | query tuning (5) | no election, voted, closed (6) |
+| Voting | Cast a ballot | candidate selection (1) | vote endpoint and transaction (4) | ballots and votes_log (5) | normal, concurrent, unauthorised (7) |
+| Voting | Duplicate prevention | friendly errors (1) | unique constraint and error mapping (4) | UNIQUE constraint (5) | concurrent duplicate votes (7) |
+| Voting | Receipt | display and copy (1) | issue and verify (4) | receipts table (5) | forged code (6) |
+| Results | Tally | results view (2) | tally service (4) | results table (5) | tally correctness (7) |
+| Results | Real-time turnout | SSE and chart (2) | SSE endpoint (4) | Redis pub/sub (5) | reconnect (7) |
+| Audit | Audit log | log viewer (2) | append and query (3) | audit_log table (5) | tamper detection (7) |
+| Operations | Demo data | none | seed script (4) | seed data (5) | repeatable seed (6) |
 
-### 2.3 前端功能列表（可直接当任务清单）
+### 2.3 Frontend feature list
 
-**成员 1：用户与选民页面**
-- 注册页：学号、姓名、密码、确认密码；前端即时校验（学号格式、两次密码一致）
-- 登录页：学号 + 密码；错误提示区分"账号不存在 / 密码错误"
-- 选举列表页：卡片展示进行中/已截止/已公布；显示"我是否已投票"
-- 候选人展示区：单选（多数决）与排序（排序复选）两种交互
-- 投票确认：二次确认弹窗，防误触
-- 投票结果页：凭证码展示、复制按钮、截图提示
-- 全局：加载态、空态、错误态；移动端适配
+**Member 1, voter-facing pages**
 
-**成员 2：管理员页面**
-- 管理看板：选举列表 + 状态 + 投票率
-- 创建/编辑选举表单：标题、说明、开放与截止时间、计票方式
-- 候选人管理：增删改、排序
-- 状态控制：开放 / 关闭 / 计票公示（非法操作置灰）
-- 结果展示：柱状图 / 逐轮淘汰表
-- 实时结果：SSE 订阅，断线自动重连提示
-- 统一视觉样式与手机适配
+- Login page: student ID and password, distinct messages for an unknown account and a wrong password
+- Election list: card layout, status badge, turnout progress, already-voted state
+- Ballot: single choice and ranked choice interactions
+- Confirmation: a second step so a vote is not cast by accident
+- Receipt: large code, copy button, warning that it cannot prove the choice
+- Loading, empty and error states; mobile layout
 
-### 2.4 后端功能列表（可直接当任务清单）
+**Member 2, admin pages**
 
-**成员 3：账号与权限**
-- `POST /api/auth/register`：学号重复校验（用户名唯一约束兜底）、密码 bcrypt/argon2 哈希
-- `POST /api/auth/login`：签发会话或 JWT
-- `POST /api/auth/logout`
-- `GET /api/auth/me`
-- 角色鉴权中间件：`@RequireRole(ADMIN)` 等
-- 会话存储：Redis（或数据库表），支持过期与主动失效
+- Dashboard: election list with status and turnout
+- Create and edit an election: title, description, opening and closing time, tally method
+- Candidate management: add, remove, reorder
+- Status control: open, close, tally and publish, with illegal actions disabled
+- Results: bar chart plus a round-by-round table for ranked choice
+- Real-time: SSE subscription with a reconnect indicator
+- Consistent styling and responsive layout
 
-**成员 4：选举与投票**
-- `GET /api/elections`、`GET /api/elections/{id}`
-- `POST /api/elections`、`PUT /api/elections/{id}`（仅管理员）
-- `POST /api/elections/{id}/candidates`（候选人配置）
-- `PATCH /api/elections/{id}/status`：**只允许状态机定义的迁移**
-- `POST /api/votes`：**单事务**完成"校验状态 → 校验资格 → 写选票 → 记录已投 → 生成凭证"
-- `GET /api/receipts/{code}`：凭证核验（**只返回"已计入/未计入"，不返回选择内容**）
-- `GET /api/results/{electionId}`：截止后才可返回
-- `GET /api/events/results`：SSE 实时推送
-- 统一异常处理：业务错误 → 4xx，未知错误 → 5xx，不泄漏堆栈
+### 2.4 Backend feature list
 
-**成员 5：数据库**
-- ER 图与表结构：users / elections / candidates / voter_roll / ballots / votes_log / receipts / results / audit_log
-- 主外键与**唯一约束**：
+**Member 3, accounts and permissions**
+
+- `POST /api/v1/auth/register` with a unique student ID and bcrypt hashing
+- `POST /api/v1/auth/login` issuing a JWT
+- `GET /api/v1/auth/me`
+- Role dependency for admin and auditor endpoints
+- Session invalidation through token expiry
+
+**Member 4, elections and voting**
+
+- `GET /api/v1/elections`, `GET /api/v1/elections/{id}`
+- `POST /api/v1/elections`, admin only
+- `PATCH /api/v1/elections/{id}/status`, only transitions defined by the state machine
+- `POST /api/v1/elections/{id}/votes`, one transaction: check status, check the roll, write the
+  ballot, claim the vote, create the receipt
+- `GET /api/v1/receipts/{code}`, returns counted or not, never the choice
+- `GET /api/v1/elections/{id}/results`, only after closing
+- `GET /api/v1/events/turnout`, SSE turnout
+- Uniform error handling: business errors map to 4xx, unknown errors to 5xx, no stack traces
+
+**Member 5, data**
+
+- Schema: users, elections, positions, candidates, voter_roll, ballots, votes_log, receipts,
+  results, audit_log
+- Keys and constraints:
   - `users.student_id` UNIQUE
-  - `votes_log(election_id, position_id, user_id)` UNIQUE ← **防重复投票的最后一道防线**
+  - `votes_log(position_id, user_id)` UNIQUE, the final guarantee of one vote per voter
   - `receipts.code` UNIQUE
-- 事务设计：投票事务隔离级别、失败回滚
-- 迁移脚本（Flyway / Alembic）
-- 演示数据生成
-- 备份与恢复演练
+- Transaction design and rollback behaviour
+- Migrations with Alembic
+- Demo dataset, backup and restore
 
-**成员 6 / 7：测试**
-- 6（功能与界面）：用户流程测试、错误提示文案、手机页面、空态
-- 7（接口与集成）：自动化接口测试、越权请求、**并发重复注册/投票**、事务回滚、全流程回归
+**Members 6 and 7, testing**
+
+- 6: user-flow tests, error message wording, mobile layout, empty states
+- 7: API tests, authorisation tests, concurrent duplicate registration and voting, transaction
+  rollback, full regression
 
 ---
 
-## 三、技术选型与理由
+## 3. Technology choice
 
-### 3.1 按需求选技术
+### 3.1 Selection driven by the requirements
 
-| 需求 | 选型 | 选择理由 |
+| Requirement | Choice | Reason |
 |---|---|---|
-| 界面交互多、要组件化 | **Vue 3** | 组件化与响应式适合"列表 + 表单 + 图表"；生态成熟；团队上手快于 Angular |
-| 前后端分离、实时结果 | REST + **SSE** | SSE 单向推送正好匹配"服务器推结果给页面"，比 WebSocket 简单、无需双向通道、自动重连；HTTP/1.1 即可 |
-| 强一致、事务、唯一约束 | **PostgreSQL** | 唯一约束与事务语义直接支撑"防重复投票"，是**用数据库保证正确性**而非靠应用层自觉 |
-| 高并发读、会话/结果缓存 | **Redis** | 会话存储 + 热门结果缓存；也是 SSE 多实例下的消息通道（Pub/Sub） |
-| 后端语言 | **Java + Spring Boot** 或 **Python + FastAPI** | 见下表权衡 |
+| Component-based UI | **Vue 3** | lists, forms and charts; fast to learn |
+| Server-to-browser updates | REST + **SSE** | one-way push fits the use case, simpler than WebSocket, automatic reconnect |
+| Strong consistency and transactions | **PostgreSQL** | unique constraints and transactions underpin one vote per voter |
+| High read volume and sessions | **Redis** | session storage, result caching and the pub/sub channel for SSE |
 
-### 3.2 ✅ 后端框架已定：**Python + FastAPI**
+### 3.2 Backend: **Python + FastAPI**
 
-> 决策日期：2026-10-18　状态：Accepted
-
-| 维度 | Java + Spring Boot | **Python + FastAPI（已选）** |
+| Dimension | Spring Boot | **FastAPI, chosen** |
 |---|---|---|
-| 事务与并发控制 | 强：`@Transactional` + JPA 成熟 | 够用：SQLAlchemy 2.0 显式事务边界 |
-| SQL 唯一约束集成 | 成熟 | 成熟（捕获 `IntegrityError` 翻译为 409） |
-| 类型与接口契约 | 编译期检查 | Pydantic v2 运行时校验 + **自动生成 OpenAPI** |
-| 开发速度 | 中 | **快** |
-| SSE 支持 | `SseEmitter` | **`StreamingResponse`，原生简单** |
-| 团队学习成本 | 高（无人有 Java 经验） | **低** |
-| 部署 | 需 JVM | 轻量（`uvicorn`） |
+| Transaction control | strong | adequate, explicit session boundaries |
+| SQL constraint integration | mature | mature, integrity error mapped to 409 |
+| Type and contract checking | compile time | Pydantic v2 at runtime, OpenAPI generated |
+| Development speed | medium | fast |
+| SSE support | SseEmitter | StreamingResponse, no extra dependency |
+| Learning cost for the team | high | low |
 
-**选择理由（写进报告的版本）**
+**Reasons**
 
-1. 团队已有 Python 基础，学习成本最低，时间留给需求工程与测试；
-2. Pydantic 模型直接充当**接口契约**，自动产出 OpenAPI 文档，前后端不易对不齐；
-3. SSE 用 `StreamingResponse` 即可，不引入额外依赖；
-4. 异步 IO 契合"大量短投票请求 + 长连接 SSE"的负载特征；
-5. **关键**：一人一票的最终保证由**数据库唯一约束**承担，不依赖框架；因此放弃 Spring Boot 的事务优势影响有限。
+1. The team already knows Python and the schedule is short.
+2. Pydantic models double as the interface contract and OpenAPI is generated automatically.
+3. SSE takes a few lines with StreamingResponse.
+4. Async I/O suits many short vote requests plus long-lived SSE connections.
+5. Most importantly, the final guarantee of one vote per voter comes from a database constraint,
+   not from the framework, so giving up Spring's transaction features costs little.
 
-**配套技术栈（全表）**
+**Full stack**
 
-| 层次 | 技术 | 版本 | 用途 |
+| Layer | Technology | Version | Purpose |
 |---|---|---|---|
-| 前端 | Vue 3 + TypeScript | 3.4+ / 5.x | 单页应用 |
-| 前端构建 | Vite | 5.x | 开发服务器与打包 |
-| 前端状态 | Pinia | 2.x | 登录态与选举数据 |
-| 前端路由 | Vue Router | 4.x | 页面切换 |
-| 前端图表 | ECharts | 5.x | 计票结果可视化 |
-| 前端请求 | Axios | 1.x | REST 调用 |
-| 实时推送 | 浏览器 `EventSource` | 原生 | 订阅 SSE |
-| 后端 | Python + FastAPI | 3.11+ / 0.110+ | REST API |
-| 后端校验 | Pydantic | v2 | 请求/响应模型 |
-| 后端 ORM | SQLAlchemy | 2.0（async） | 事务与数据访问 |
-| 后端驱动 | asyncpg | 0.29+ | PostgreSQL 异步驱动 |
-| 后端迁移 | Alembic | 1.x | 数据库版本管理 |
-| 后端服务器 | Uvicorn | 0.27+ | ASGI 服务器 |
-| 后端鉴权 | python-jose + bcrypt | — | JWT 签发 / 密码哈希（直接用 bcrypt） |
-| 数据库 | PostgreSQL | 16 | 主数据 + 唯一约束 |
-| 缓存 | Redis | 7 | 会话 / 缓存 / SSE 发布订阅 |
-| 测试 | pytest + pytest-asyncio + httpx | — | 单元与接口测试 |
-| 容器化 | Docker Compose | — | 本地一键起 PG + Redis |
+| Frontend | Vue 3 + TypeScript | 3.4+ / 5.x | single-page application |
+| Build | Vite | 5.x | dev server and bundling |
+| State | Pinia | 2.x | session and election data |
+| Routing | Vue Router | 4.x | navigation |
+| Charts | ECharts | 5.x | result visualisation |
+| HTTP client | Axios | 1.x | REST calls |
+| Real-time | EventSource | native | SSE subscription |
+| Backend | Python + FastAPI | 3.11+ / 0.115+ | REST API |
+| Validation | Pydantic | v2 | request and response models |
+| ORM | SQLAlchemy | 2.0 async | transactions and data access |
+| Driver | asyncpg | 0.29+ | PostgreSQL async driver |
+| Migrations | Alembic | 1.x | schema versioning |
+| Server | Uvicorn | 0.27+ | ASGI server |
+| Auth | python-jose + bcrypt | any | JWT and password hashing |
+| Database | PostgreSQL | 16 | primary data and constraints |
+| Cache | Redis | 7 | sessions, caching and pub/sub |
+| Testing | pytest, pytest-asyncio, httpx | any | unit and API tests |
+| Containers | Docker Compose | any | local PostgreSQL and Redis |
 
-> 不选 Django：封装重、学习曲线长、扩展不灵活。不选 Flask：缺异步与内建校验，Pydantic/OpenAPI 都要自己接。
+> Django was rejected as too heavily abstracted and slow to learn; Flask lacks async and built-in
+> validation, so Pydantic and OpenAPI would have to be wired by hand.
 
-### 3.3 架构建议：用课程给的应用架构，而不是自己发明
+### 3.3 Architecture: reuse the course template
 
-`Lecture 6` 把应用系统分成四类（数据处理 / **事务处理** / 事件处理 / 语言处理）。
-**我们的系统属于「事务处理系统（Transaction Processing System）」**：
-用户发出请求 → 更新数据库中的信息 → 返回结果。`Lecture 6` 第 47–51 页给出了这类系统的**标准分层架构**，同时也以 Mentcare（医疗信息系统）为例做过示范。
+Lecture 6 classifies applications into four types: data processing, transaction processing, event
+processing and language processing. Ours is a **transaction processing system**: a request updates
+information in a database and returns a result. Lecture 6 gives the standard layered architecture
+for this type and demonstrates it with the Mentcare system.
 
-所以架构不需要原创，**直接采用课程给的三层 + 信息检索层**，并在报告里说明"我们识别出本项目属于事务处理类应用，因此复用该应用架构模板"——这是 `Lecture 6` 明确认可的用法（"Use of application architectures: as a starting point / design checklist"）。
+We therefore reuse that template rather than inventing one, and state this in the report.
 
 ```mermaid
 flowchart TB
-    subgraph Tier1["表示层（用户界面）"]
-        UI["Vue 3 单页应用<br/>选民端 / 管理端"]
+    subgraph Tier1["Presentation"]
+        UI["Vue 3 single-page application<br/>voter and admin"]
     end
-    subgraph Tier2["用户通信层"]
-        WS["Nginx + REST API<br/>会话与鉴权"]
-        SSE["SSE 结果推送"]
+    subgraph Tier2["User communication"]
+        WS["REST API<br/>session and authentication"]
+        SSE["SSE result stream"]
     end
-    subgraph Tier3["信息检索 / 应用逻辑层"]
-        SVC["业务服务<br/>投票事务 · 状态机 · 计票"]
+    subgraph Tier3["Application logic"]
+        SVC["Domain services<br/>voting transaction, state machine, tallying"]
     end
-    subgraph Tier4["系统数据库层"]
-        PG[("PostgreSQL<br/>事务与唯一约束")]
-        RD[("Redis<br/>会话 / 缓存 / 发布订阅")]
+    subgraph Tier4["Database"]
+        PG[("PostgreSQL<br/>transactions and unique constraints")]
+        RD[("Redis<br/>sessions, caching, pub/sub")]
     end
 
     UI --> WS
@@ -369,132 +373,125 @@ flowchart TB
     SVC --> RD
 ```
 
-**为什么不是微服务**：7 人、约 8 周、课程作业。`Lecture 6` 强调"架构要服务于非功能需求"；对本项目，关键非功能需求是**数据一致性（防重复投票）**与**开发效率**，微服务在这两点上都是负收益。分层单体 + 明确接口足够，拆分可能性写进"演化"章节即可。
+**Why not microservices**: seven people, about eight weeks, a course project. Lecture 6 stresses
+that architecture serves non-functional requirements; here the critical ones are data consistency
+and delivery speed, and microservices harm both. A modular monolith with clear interfaces is
+sufficient, and the split option is recorded in the evolution section.
 
-### 3.4 用 `4+1` 视图组织架构章节
+### 3.4 Organising the architecture chapter with the 4+1 view model
 
-`Lecture 6` 第 19 页给了 4+1 视图模型。报告里按这个组织会显得很专业，而且**每一视图我们都有现成材料**：
-
-| 视图 | 本项目的呈现方式 | 谁能做 |
+| View | How we present it | Owner |
 |---|---|---|
-| **逻辑视图** | 领域类图（Election / Candidate / Ballot / VoterRoll / Receipt） | 建模负责人 |
-| **过程视图** | 投票事务时序图、SSE 推送过程 | 建模负责人 |
-| **开发视图** | 分层包结构图（前端 / 网关 / 服务 / 数据） | 架构负责人 |
-| **物理视图** | 部署图（浏览器 → Nginx → 应用 → PG/Redis） | 架构负责人 |
-| **+1 场景** | 用"投票"这个用例串起上面四个视图 | 需求负责人 |
+| Logical | domain class diagram: election, position, candidate, ballot, voter roll, receipt | modelling |
+| Process | voting transaction sequence and SSE delivery | modelling |
+| Development | package layout: frontend, gateway, service, data | architecture |
+| Physical | deployment diagram: browser, Nginx, application, PostgreSQL, Redis | architecture |
+| Scenarios, plus one | the cast-a-vote use case ties the views together | requirements |
 
-### 3.5 用课程给的**架构模式**来论证我们的分层
+### 3.5 Using the course architectural patterns
 
-`Lecture 6` 第 23–27 页把 MVC 与 Layered 都写成了"何时用 / 优点 / 缺点"的表格。报告里应当**引用并对照**，而不是只说"我们用了分层"：
-
-- **MVC**：前端 Vue 天然是 MVVM 变体；后端"控制层 → 业务层 → 数据层"对应 Controller → Service → Repository。引用 `Lecture 6` 的"when used"条件说明我们**为什么**需要它（数据有多种呈现方式：列表、图表、实时流）。
-- **Layered**：`Lecture 6` 明确指出分层的一个优点是"**multi-level security**"，且"层接口变化时只影响相邻层"——这正好支撑我们"把敏感数据放在内层、把匿名化做在服务层"的设计。
-
-> 一句话可以直接进报告：**"我们参照 Lecture 6 的 Layered architecture 模式，将关键资产（选票明文）限制在最内层，并按该模式给出的 multi-level security 场景论证分层收益。"**
+- **MVC**: the Vue frontend is a view-model; the backend maps controller to service to repository.
+  The when-used criteria in Lecture 6 justify it because the data has several presentations:
+  list, chart and live stream.
+- **Layered**: Lecture 6 notes that layering supports multi-level security and that a change in one
+  layer interface only affects its neighbours. This supports keeping sensitive assets in the
+  innermost layer and anonymising in the service layer.
 
 ---
 
-## 四、几条会直接影响分数的建议
+## 4. Guidance that affects the grade
 
-### 4.1 ⚠️ 用 SSE 实时推送结果的两个前提
+### 4.1 Two conditions for real-time results
 
-1. **进行中不得公开各候选人票数**。真实选举在投票期间只公布**投票率**，公布票数会引导投票、损害公平性。建议：进行中只推"已投票人数/投票率"，**票数在截止并计票后才推**。
-2. **匿名性不能被实时流破坏**。推送内容必须是**聚合值**，绝不能推送"某张选票"或带 user_id 的信息。
+1. **No per-candidate counts while voting is open.** Real elections publish turnout only, because
+   publishing counts influences later voters. Push turnout during voting and counts after closing.
+2. **The stream must not weaken anonymity.** Only aggregates are published, never a ballot or any
+   value carrying a user identifier.
 
-这两条写进 SRS 的非功能需求，答辩时是加分点。
+### 4.2 Anonymity and audit: the core design decision
 
-### 4.2 匿名与审计：本项目的核心设计决策（务必有人认领）
-
-选举系统最有价值的设计不是 CRUD，而是这条矛盾：**既要查不出谁投了谁，又要能审计有没有作弊**。建议在表结构层面做**物理隔离**：
+The most valuable design is not CRUD. Separate the data physically:
 
 ```
-voter_roll(选民册)  →  记录"谁投了"（has_voted），不含 ballot_id
-ballots(选票)       →  记录"投了什么"，不含 user_id
-receipts(凭证)      →  唯一桥梁，凭证码只发给选民本人
+voter_roll   who voted      has_voted      no ballot_id
+ballots      what was cast  choice_enc     no user_id
+receipts     the only bridge, given to the voter
 ```
 
-再配一个**追加型审计日志**（每条记录的哈希包含上一条的哈希），可检测"有人直接改数据库"。
+Add an append-only audit log whose entries hash the previous entry, so direct database edits can be
+detected.
 
-> 分工表里目前**没有人明确负责这块**。建议交给成员 5（数据库）主导设计、成员 4 实现，并写一份 ADR 记录理由。
+### 4.3 Gaps in the original allocation
 
-### 4.3 分工表的三处缺口（建议补进表格）
-
-| 缺口 | 风险 | 建议 |
+| Gap | Risk | Action |
 |---|---|---|
-| **需求文档 / 系统建模无人认领** | 评分表第一项就是 requirement engineering，System Modeling 也是独立主题 | 从成员 6 或 2 分出部分职责，或明确"由成员 X 兼" |
-| **报告、演示视频、logbook 无人认领** | Report 15% + Presentation 10% + Logbook 15% | 明确一人统筹（建议组长） |
-| **接口契约无冻结机制** | 7 人并行开发必然对不上 | 先出 `API_CONTRACT.md` + 建库脚本冻结，再分头写 |
+| No owner for requirements and modelling | the first rubric item is requirements engineering | assign explicitly |
+| No owner for report, video and logbook | report 15 percent plus presentation 10 percent plus logbook 15 percent | one coordinator |
+| No interface freeze | three backend owners will drift | publish the API contract first |
 
-### 4.4 AI 生成代码的团队规范（团队建议里提到 Agent+Skills，需要补规则）
+### 4.4 Team rules for AI-assisted code
 
-用 AI 提效没问题，但 7 个人各用各的会**风格不一致、架构漂移**。建议定三条：
+1. Share one project convention document so generated code follows the same structure and naming.
+2. Every generated change is reviewed and must pass the tests before merging.
+3. Disclose AI assistance honestly in the logbook and be able to explain your own module.
 
-1. **统一生成入口**：共用同一份"项目约定"文档（目录结构、命名、错误码、分层规则），喂给 AI 时保持一致；
-2. **生成后必须人工 review + 通过测试**才可合入。测试由成员 6/7 把控，这是质量闸门；
-3. **如实披露**：课程明确要求说明 AI 使用情况，且 logbook 是**个人独立评分**、"answering questions about their participation"。所以每个人必须能讲清**自己那块代码**，不能只当搬运工。
+### 4.5 Reusing the course document templates
 
-### 4.5 把课程给的**文档模板**直接用上（最容易拿分、最常被忽略）
+**Requirements document structure** from Lecture 4:
 
-课程材料里已经给了两套现成模板，照抄结构即可，不必自己发明格式：
-
-**① 需求文档结构**（`Lecture 4` 第 68–69 页）
-
-| 章节 | 我们写什么 |
+| Section | What we write |
 |---|---|
-| Preface / Introduction | 系统目的：管理并执行校内选举，替代人工投票 |
-| Glossary | 选举、候选人、选票、凭证码、状态机、IRV 等术语表 |
-| User requirements definition | 三类用户的诉求：选民 / 选举管理员 / 审计员 |
-| System architecture | 引用第三章的分层架构图 |
-| System requirements specification | **编号的功能需求 + 非功能需求** |
-| System models | 引用第四张 UML 图 |
-| **System evolution** | 预计的变化：增加排序复选、多轮投票、校外认证对接 |
-| Appendices | 数据库逻辑设计、接口清单 |
+| Preface and introduction | purpose of the system |
+| Glossary | election, position, candidate, ballot, voter roll, receipt, state machine, IRV |
+| User requirements | needs of voter, administrator and auditor |
+| System architecture | the layered diagram from section 3.3 |
+| System requirements | numbered functional and non-functional requirements |
+| System models | the UML models from section 1 |
+| System evolution | planned changes: ranked choice, multiple rounds, identity provider |
+| Appendices | database design and interface list |
 
-> `Lecture 4` 第 54 页给了写作规范：**用 `shall` 表示强制需求、`should` 表示期望**，并**为每条需求附上理由（rationale）**。这一条写进去，文档质量立刻区别于其他组。
+Lecture 4 also requires `shall` for mandatory and `should` for desirable requirements, each with a
+rationale.
 
-**② 用例的表格化描述**（`Lecture 5` 第 18 页）
+**Use case table** from Lecture 5, because a diagram alone is not enough:
 
-不要只画个用例图就结束。`Lecture 5` 明确要求"图形概览 + 详细表格"。示例：
-
-| 字段 | 内容（"投票"用例） |
+| Field | Content for cast a vote |
 |---|---|
-| Actors | 选民；身份认证系统 |
-| Description | 选民选定候选人后提交选票，系统校验资格与唯一性并记录结果 |
-| Data | 选举 ID、职位 ID、候选人选择、学号 |
-| Stimulus | 选民点击"确认投票" |
-| Response | 返回凭证码，表示选票已计入 |
-| Comments | 需要先登录且该选举处于进行中状态 |
+| Actors | voter, identity provider |
+| Description | the voter selects a candidate, the system validates eligibility and uniqueness, and records the ballot |
+| Data | election ID, position ID, choice, student ID |
+| Stimulus | the voter presses confirm |
+| Response | a receipt code confirming the ballot was counted |
+| Comments | requires sign-in and an open election |
 
-**③ 场景（Scenario）**（`Lecture 4` 第 46–48 页）
-
-覆盖"正常流程 / 出问题的情况 / 其他并发活动 / 结束状态"。投票用例的"出问题时"可以写：重复投票、选举已截止、会话过期、网络中断后重试——这四条**正好对应你们要写的测试用例**（成员 6/7 直接拿来用）。
+**Scenario** from Lecture 4: normal flow, what can go wrong, concurrent activities and the end
+state. The what-can-go-wrong cases, namely duplicate vote, closed election, expired session and
+retry after a network failure, become the negative test cases directly.
 
 ---
 
-## 五、课程材料 → 项目产出的对照表（谁用哪份材料）
+## 5. Course material to deliverable map
 
-> 用途：开会时每个人知道该看哪份材料、产出什么东西。**这也是报告"过程"章节的现成素材。**
-
-| 课程材料 | 关键内容 | 对应项目产出 | 负责人 |
+| Material | Key content | Deliverable | Owner |
 |---|---|---|---|
-| Lecture 1 | 软件属性、基本活动、**ACM/IEEE 八条伦理** | 伦理章节 / AI 使用声明 | 全体 |
-| Lecture 2 | 过程模型、**测试阶段**（组件/系统/客户）、演化 | 开发过程选择、测试策略 | 组长、测试 |
-| Lecture 3 | **Scrum 角色/工件/仪式**、团队 5–9 人 | 项目管理方式、任务板 | 组长 |
-| Lecture 4 | 功能/非功能需求、**文档结构**、需求冲突、变更管理 | SRS 需求文档 | 需求负责人 |
-| Lecture 5 | 用例图/**用例表格**、时序图、类图、状态图、场景 | 系统建模章节 | 建模负责人 |
-| Lecture 6 | **事务处理系统架构**、MVC/分层模式、4+1 视图 | 架构章节 | 架构负责人 |
-| Mentcare 需求文档 | **真实需求文档的样例格式**（编号 + 章节） | SRS 参照模板 | 需求负责人 |
-| Insulin pump 案例 | 安全攸关系统的**两条高层需求**写法 | 非功能需求写法参考 | 需求负责人 |
-| tutorial 5 solution | 需求验证四问题、**需求变更管理流程** | 需求验证与变更记录 | 需求负责人 |
-| tutorial 6 | 类图关系辨析、**时序图设计要点** | 建模图评审 | 建模负责人 |
+| Lecture 1 | software attributes, activities, ACM and IEEE ethics | ethics section, AI disclosure | all |
+| Lecture 2 | process models, testing stages, evolution | process choice, test strategy | lead and test |
+| Lecture 3 | Scrum roles, artefacts and ceremonies | project management, board | lead |
+| Lecture 4 | functional and non-functional requirements, document structure, change management | SRS | requirements |
+| Lecture 5 | use case, sequence, class and state diagrams, scenarios | modelling chapter | modelling |
+| Lecture 6 | transaction processing architecture, MVC and layered patterns, 4+1 views | architecture chapter | architecture |
+| Mentcare requirements | a real requirements document | SRS template | requirements |
+| Insulin pump case | two high-level requirements for a safety-critical system | how to write non-functional requirements | requirements |
+| Tutorial 5 | validation questions and change management | validation and change log | requirements |
+| Tutorial 6 | class relationships and sequence diagram design | model review | modelling |
 
 ---
 
-## 六、下一步（建议按此顺序推进）
+## 6. Next steps
 
-1. **冻结 API 契约与数据库 schema**（成员 4、5 主导，1–2 天）→ 解除其他人的阻塞；
-2. **画完 4 张图**（上下文 / 活动 / 状态 / 时序）+ **2 张用例表格** → 放进报告的系统建模章节；
-3. **补需求文档**：按 `Lecture 4` 的章节结构写，功能需求 + 非功能需求**编号表**，每条附理由；非功能需求要可度量（例："100 并发下 p95 < 300ms"）；
-4. **定技术栈并写 ADR**（1 页），明确"为什么是事务处理系统架构""为什么不用微服务""为什么用 PostgreSQL 唯一约束防重复投票"；
-5. **搭骨架并跑通一条最小链路**（登录 → 列表 → 投票 → 凭证），再按模块并行开发。
-
+1. Freeze the API contract and the schema, members 4 and 5, one or two days.
+2. Finish the four diagrams and two use case tables for the modelling chapter.
+3. Write the SRS using the Lecture 4 structure, with numbered requirements and measurable
+   non-functional requirements.
+4. Record the technology decision in an ADR.
+5. Build a skeleton and a minimal end-to-end path, then work in parallel by module.

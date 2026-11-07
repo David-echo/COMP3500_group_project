@@ -1,9 +1,4 @@
-/**
- * SSE 订阅「投票率」
- * ================
- * 依约定：投票期间只推送聚合投票率，不推送各候选人票数。
- * EventSource 自带断线重连，这里额外处理组件卸载时的关闭。
- */
+
 import { onBeforeUnmount, ref } from 'vue'
 
 export interface TurnoutEvent {
@@ -30,7 +25,6 @@ export function useTurnout() {
     })
     es.addEventListener('error', () => {
       connected.value = false
-      // EventSource 会自动重连；这里只更新状态供 UI 提示
     })
   }
 

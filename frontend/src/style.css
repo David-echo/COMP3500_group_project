@@ -1,13 +1,8 @@
-/* ============================================================
-   基础样式与通用组件
-   ------------------------------------------------------------
-   只放「可复用」的东西：重置、排版、按钮、表单、卡片、徽章、表格。
-   页面特有的布局写在各自 .vue 的 scoped style 里。
-   ============================================================ */
+
 
 @import './styles/tokens.css';
 
-/* ---------- 重置 ---------- */
+
 *,
 *::before,
 *::after {
@@ -44,7 +39,7 @@ a:hover {
   text-decoration: underline;
 }
 
-/* 数字统一等宽，票数对齐更整齐 */
+
 .num,
 .mono {
   font-variant-numeric: tabular-nums;
@@ -53,14 +48,14 @@ a:hover {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
-/* 键盘焦点必须可见（无障碍要求） */
+
 :focus-visible {
   outline: 2px solid var(--brand);
   outline-offset: 2px;
   border-radius: var(--r-sm);
 }
 
-/* ---------- 布局 ---------- */
+
 .container {
   max-width: var(--container);
   margin: 0 auto;
@@ -92,7 +87,7 @@ a:hover {
   margin-top: var(--s-1);
 }
 
-/* ---------- 卡片 ---------- */
+
 .card {
   background: var(--surface);
   border: 1px solid var(--line);
@@ -129,7 +124,7 @@ a:hover {
   padding: var(--s-3) var(--s-4);
 }
 
-/* ---------- 按钮 ---------- */
+
 .btn {
   --btn-bg: var(--brand);
   --btn-fg: #fff;
@@ -207,7 +202,7 @@ a:hover {
   background: #fee2e2;
 }
 
-/* ---------- 表单 ---------- */
+
 .field + .field {
   margin-top: var(--s-4);
 }
@@ -263,7 +258,7 @@ a:hover {
   margin-top: var(--s-1);
 }
 
-/* ---------- 提示条 ---------- */
+
 .alert {
   display: flex;
   gap: var(--s-2);
@@ -309,7 +304,7 @@ a:hover {
   color: #1e40af;
 }
 
-/* ---------- 徽章 ---------- */
+
 .badge {
   display: inline-flex;
   align-items: center;
@@ -366,7 +361,7 @@ a:hover {
   color: var(--muted);
 }
 
-/* ---------- 表格 ---------- */
+
 .table {
   width: 100%;
   border-collapse: collapse;
@@ -404,7 +399,7 @@ a:hover {
   background: #fafcff;
 }
 
-/* ---------- 进度条（投票率）---------- */
+
 .progress {
   height: 6px;
   background: var(--line-soft);
@@ -420,7 +415,7 @@ a:hover {
   transition: width var(--dur) var(--ease);
 }
 
-/* ---------- 空状态 ---------- */
+
 .empty {
   padding: var(--s-6) var(--s-4);
   text-align: center;
@@ -428,7 +423,7 @@ a:hover {
   font-size: var(--text-sm);
 }
 
-/* ---------- 工具类 ---------- */
+
 .row {
   display: flex;
   align-items: center;
@@ -462,7 +457,7 @@ a:hover {
   margin: var(--s-4) 0;
 }
 
-/* 投票结果入场动画（有意义的动效，不是装饰） */
+
 @keyframes rise-in {
   from {
     opacity: 0;

@@ -1,10 +1,4 @@
-"""
-审计服务 (Audit service)
-========================
-
-所有"值得记账"的操作都通过 append() 写入哈希链。
-payload 会先经过 forbid 校验，防止把投票选择写进日志（匿名性守卫）。
-"""
+"""Module."""
 
 from __future__ import annotations
 
@@ -29,7 +23,7 @@ async def append(
     payload: dict,
     ts: str | None = None,
 ) -> int:
-    """追加一条审计记录，返回其 seq。"""
+    """Append."""
     hashchain.assert_no_forbidden_keys(payload)
     ts = ts or now_iso()
 
@@ -76,7 +70,7 @@ async def read_chain(session: AsyncSession) -> list[hashchain.ChainRecord]:
 
 
 async def verify(session: AsyncSession) -> tuple[bool, int | None, str, str]:
-    """返回 (ok, first_bad_seq, message, chain_tip)。"""
+    """Verify."""
     chain = await read_chain(session)
     ok, bad, msg = hashchain.verify_chain(chain)
     return ok, bad, msg, hashchain.chain_tip(chain)

@@ -1,4 +1,4 @@
-"""投票与凭证接口 (Votes & receipts) —— 成员 4 负责"""
+"""Module."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from ..schemas import ReceiptResponse, VoteRequest, VoteResponse
 from ..services import voting
 from ..services.voting import VoteError
 
-router = APIRouter(tags=["投票"])
+router = APIRouter(tags=["Voting"])
 
 
 _STATUS_MAP = {
@@ -30,12 +30,7 @@ _STATUS_MAP = {
 async def cast_vote(
     election_id: int, payload: VoteRequest, session: SessionDep, user: CurrentUser
 ) -> VoteResponse:
-    """
-    投出一票。
-
-    校验顺序固定（与 API 契约一致）：
-      登录 → 名册 → 选举状态 → 候选合法 → 唯一约束仲裁
-    """
+    """Cast vote."""
     try:
         result = await voting.cast_ballot(
             session,
@@ -59,10 +54,6 @@ async def cast_vote(
 
 @router.get("/receipts/{code}", response_model=ReceiptResponse)
 async def verify_receipt(code: str, session: SessionDep) -> ReceiptResponse:
-    """
-    凭证核验（无需登录）。
-
-    ⚠️ 响应中**不包含**选择内容，防止凭证被用于证明投票选择（防贿选/胁迫）。
-    """
+    """Verify receipt."""
     data = await voting.verify_receipt(session, code)
     return ReceiptResponse(**data)

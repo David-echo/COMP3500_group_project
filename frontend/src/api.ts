@@ -1,9 +1,4 @@
-/**
- * API 客户端
- * ==========
- * 统一走 /api/v1（Vite 开发服务器会代理到 FastAPI）。
- * 依据 API 契约：成功返回业务数据，失败抛 ApiError（含 code 与 message）。
- */
+
 import axios, { AxiosError } from 'axios'
 
 export interface User {
@@ -100,13 +95,7 @@ http.interceptors.request.use((cfg) => {
   return cfg
 })
 
-/**
- * 提取可展示的错误信息。
- *
- * 后端约定所有错误的 detail 都是字符串；但为了容错，
- * 这里也兼容 FastAPI 默认的「校验错误数组」形式，
- * 避免页面上出现 [object Object]。
- */
+
 function extractMessage(data: unknown, fallback: string): string {
   if (typeof data === 'string' && data.trim()) return data
   if (data && typeof data === 'object') {
@@ -132,7 +121,7 @@ function toApiError(e: unknown): ApiError {
   return new ApiError(String(status), message, status)
 }
 
-/** 统一处理：成功返回 data，失败抛 ApiError */
+
 async function call<T>(p: Promise<{ data: T }>): Promise<T> {
   try {
     return (await p).data

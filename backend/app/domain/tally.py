@@ -1,26 +1,9 @@
-"""
-计票策略 (Tally strategies)
-===========================
-
-对应课程 Lecture 6「Architectural patterns」中的可替换组件思想，
-以及 Lecture 7/9 关注的「演化」：新增一种计票法只需新增一个类并注册，
-**投票、存储、公示的代码不需要改动**。
-
-v1 实现：
-  - fptp  单选制（First Past The Post）
-  - irv   排序复选制（Instant Runoff Voting）
-
-计票是**纯函数**：输入选票列表，输出结果，不碰数据库 —— 因此可被完整单元测试。
-"""
-
+"""Module."""
 from __future__ import annotations
-
 import hashlib
 from collections import Counter
 from dataclasses import dataclass, field
 from typing import Protocol, Sequence
-
-
 @dataclass
 class TallyResult:
     method: str
@@ -28,19 +11,13 @@ class TallyResult:
     winner: int | None
     rounds: list[dict] = field(default_factory=list)
     note: str = ""
-
-
 class TallyStrategy(Protocol):
     name: str
     label: str
-
     def tally(self, ballots: Sequence[Sequence[int]], num_candidates: int) -> TallyResult: ...
-
-
 class FPTPStrategy:
     name = "fptp"
-    label = "单选制 (First Past The Post)"
-
+    label = "First Past The Post"
     def tally(self, ballots: Sequence[Sequence[int]], num_candidates: int) -> TallyResult:
         counts = Counter()
         for b in ballots:
@@ -50,14 +27,11 @@ class FPTPStrategy:
         top = max(full.values()) if full else 0
         leaders = [i for i, v in full.items() if v == top]
         winner = leaders[0] if len(leaders) == 1 else None
-        note = "" if len(leaders) <= 1 else f"并列最高票：候选 {leaders}"
+        note = "" if len(leaders) <= 1 else f"Tie for most votes: candidates {leaders}"
         return TallyResult(self.name, full, winner, note=note)
-
-
 class IRVStrategy:
     name = "irv"
-    label = "排序复选制 (Instant Runoff)"
-
+    label = "Instant Runoff (Ranked Choice)"
     def tally(self, ballots: Sequence[Sequence[int]], num_candidates: int) -> TallyResult:
         cleaned: list[list[int]] = []
         for b in ballots:
@@ -68,11 +42,9 @@ class IRVStrategy:
                     c.append(x)
             if c:
                 cleaned.append(c)
-
         remaining = list(range(num_candidates))
         rounds: list[dict] = []
         total = len(cleaned)
-
         while len(remaining) > 1:
             counts = Counter()
             exhausted = 0
@@ -83,13 +55,11 @@ class IRVStrategy:
                         break
                 else:
                     exhausted += 1
-
             full = {i: counts.get(i, 0) for i in remaining}
             rounds.append(
                 {"remaining": list(remaining), "counts": full,
                  "exhausted": exhausted, "total": total}
             )
-
             for cand, votes in full.items():
                 if votes * 2 > total:
                     return TallyResult(
@@ -97,16 +67,13 @@ class IRVStrategy:
                         {i: counts.get(i, 0) for i in range(num_candidates)},
                         cand,
                         rounds=rounds,
-                        note=f"第 {len(rounds)} 轮过半数胜出",
+                        note=f"Majority reached in round {len(rounds)}",
                     )
-
             if len(remaining) == 2:
                 break
-
             fewest = min(full.values())
             losers = [c for c, v in full.items() if v == fewest]
-            remaining.remove(max(losers))  # 并列时确定性淘汰序号较大者
-
+            remaining.remove(max(losers))
         counts = Counter()
         for b in cleaned:
             for pref in b:
@@ -125,28 +92,18 @@ class IRVStrategy:
             {i: counts.get(i, 0) for i in range(num_candidates)},
             winner,
             rounds=rounds,
-            note="最后一轮比较最高两名" if winner is not None else "最终仍并列",
+            note="Final round compares the top two" if winner is not None else "Still tied after the final round",
         )
-
-
 STRATEGIES: dict[str, TallyStrategy] = {
     FPTPStrategy.name: FPTPStrategy(),
     IRVStrategy.name: IRVStrategy(),
 }
-
-
 def get_strategy(name: str) -> TallyStrategy:
     if name not in STRATEGIES:
-        raise ValueError(f"未知计票方法: {name!r}；可用: {sorted(STRATEGIES)}")
+        raise ValueError(f"Unknown tally method: {name!r}; available: {sorted(STRATEGIES)}")
     return STRATEGIES[name]
-
-
 def tally_digest(method: str, counts: dict[int, int], ballot_ids: Sequence[int]) -> str:
-    """
-    结果摘要：绑定「计票方法 + 各候选票数 + 参与计票的选票 ID 集合」。
-    第三方可用同一批选票复算并比对摘要，从而发现事后篡改。
-    摘要不含任何选民身份信息。
-    """
+    """Tally digest."""
     body = "|".join(
         [
             method,

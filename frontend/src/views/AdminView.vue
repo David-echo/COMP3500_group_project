@@ -18,6 +18,7 @@ const audit = ref<{
   message: string
 } | null>(null)
 const chartEl = ref<HTMLDivElement | null>(null)
+const currentElection = ref<Election | null>(null)
 let chart: echarts.ECharts | null = null
 
 const stats = computed(() => ({
@@ -57,6 +58,7 @@ async function publish(e: Election) {
 
 async function showResults(e: Election) {
   try {
+    currentElection.value = e
     const r = await api.results(e.id)
     resultsMsg.value = r.published ? '' : r.message
     results.value = r.published ? r.results : null
@@ -77,9 +79,16 @@ function renderChart() {
 
   const row = results.value[0]
   const entries = Object.entries(row.counts).sort((a, b) => Number(a[0]) - Number(b[0]))
+
+  const position = currentElection.value?.positions.find(
+    (p) => p.id === row.position_id,
+  )
+  const nameOf = (idx: number) =>
+    position?.candidates.find((c) => c.idx === idx)?.name ?? `Candidate ${idx}`
+
   const data = entries.map(([k, v]) => ({
     idx: Number(k),
-    name: `候选 ${k}`,
+    name: nameOf(Number(k)),
     value: v,
     isWinner: row.winner_idx === Number(k),
   }))
@@ -93,7 +102,13 @@ function renderChart() {
         data: data.map((d) => d.name),
         axisLine: { lineStyle: { color: '#e2e8f0' } },
         axisTick: { show: false },
-        axisLabel: { color: '#64748b', fontSize: 12 },
+        axisLabel: {
+          color: '#64748b',
+          fontSize: 12,
+          interval: 0,
+          width: 120,
+          overflow: 'break',
+        },
       },
       yAxis: {
         type: 'value',
@@ -146,48 +161,48 @@ onMounted(async () => {
   <div class="container page">
     <header class="page-head">
       <div>
-        <h1 class="page-title">管理台</h1>
-        <p class="page-sub">状态控制、计票公示、完整性校验与审计链</p>
+        <h1 class="page-title">Admin console</h1>
+        <p class="page-sub">Lifecycle control, tallying, integrity checks and the audit chain</p>
       </div>
-      <button class="btn btn-ghost btn-sm" @click="load">刷新</button>
+      <button class="btn btn-ghost btn-sm" @click="load">Refresh</button>
     </header>
 
     <div v-if="error" class="alert alert-danger" role="alert">{{ error }}</div>
 
-    <!-- 概览 -->
+    
     <div class="stat-grid">
       <div class="stat">
-        <span class="stat-label">选举总数</span>
+        <span class="stat-label">Elections</span>
         <strong class="stat-value num">{{ stats.total }}</strong>
       </div>
       <div class="stat">
-        <span class="stat-label">进行中</span>
+        <span class="stat-label">Open</span>
         <strong class="stat-value num">{{ stats.open }}</strong>
       </div>
       <div class="stat">
-        <span class="stat-label">已公布</span>
+        <span class="stat-label">Published</span>
         <strong class="stat-value num">{{ stats.published }}</strong>
       </div>
       <div class="stat">
-        <span class="stat-label">审计记录</span>
+        <span class="stat-label">Audit entries</span>
         <strong class="stat-value num">{{ audit?.length ?? '—' }}</strong>
       </div>
     </div>
 
-    <!-- 选举管理 -->
+    
     <section class="card mt-4">
       <div class="card-head">
-        <h2 class="card-title">选举管理</h2>
-        <span class="hint">状态只能沿 未开始 → 进行中 → 已截止 → 已公布 单向推进</span>
+        <h2 class="card-title">Elections</h2>
+        <span class="hint">Status moves one way: Scheduled → Voting open → Closed → Published</span>
       </div>
       <div class="table-wrap">
         <table class="table">
           <thead>
             <tr>
-              <th>选举</th>
-              <th>状态</th>
-              <th>投票率</th>
-              <th style="text-align: right">操作</th>
+              <th>Election</th>
+              <th>Status</th>
+              <th>Turnout</th>
+              <th style="text-align: right">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -195,7 +210,7 @@ onMounted(async () => {
               <td>
                 <div class="cell-title">{{ e.title }}</div>
                 <div class="hint">
-                  {{ e.tally_method === 'irv' ? '排序复选制' : '单选制' }}
+                  {{ e.tally_method === 'irv' ? 'Ranked choice' : 'First past the post' }}
                 </div>
               </td>
               <td>
@@ -209,31 +224,31 @@ onMounted(async () => {
                     class="btn btn-ghost btn-sm"
                     @click="setStatus(e, 'open')"
                   >
-                    开放投票
+                    Open voting
                   </button>
                   <button
                     v-if="e.status === 'open'"
                     class="btn btn-ghost btn-sm"
                     @click="setStatus(e, 'closed')"
                   >
-                    截止
+                    Close
                   </button>
                   <button
                     v-if="e.status === 'closed'"
                     class="btn btn-sm"
                     @click="publish(e)"
                   >
-                    计票公示
+                    Tally &amp; publish
                   </button>
                   <button
                     v-if="e.status !== 'scheduled'"
                     class="btn btn-ghost btn-sm"
                     @click="showResults(e)"
                   >
-                    查看结果
+                    View results
                   </button>
                   <button class="btn btn-quiet btn-sm" @click="checkIntegrity(e)">
-                    完整性
+                    Integrity
                   </button>
                 </div>
               </td>
@@ -243,13 +258,13 @@ onMounted(async () => {
       </div>
     </section>
 
-    <!-- 计票结果 -->
+    
     <section class="card">
       <div class="card-head">
-        <h2 class="card-title">计票结果</h2>
+        <h2 class="card-title">Results</h2>
         <span v-if="results?.length" class="row">
           <span class="badge badge-published">{{ results[0].tally_label }}</span>
-          <span class="hint">有效票 {{ results[0].ballot_count }}</span>
+          <span class="hint">Valid ballots: {{ results[0].ballot_count }}</span>
         </span>
       </div>
 
@@ -259,13 +274,13 @@ onMounted(async () => {
         <template v-if="results?.length">
           <div class="winner-row">
             <div>
-              <p class="hint">当选</p>
+              <p class="hint">Winner</p>
               <p class="winner-name">
-                {{ results[0].winner_name ?? '无单一最高票（并列）' }}
+                {{ results[0].winner_name ?? 'No single winner (tie)' }}
               </p>
             </div>
             <div class="digest">
-              <p class="hint">结果摘要 SHA-256</p>
+              <p class="hint">Result digest (SHA-256)</p>
               <p class="mono text-xs">{{ results[0].digest }}</p>
             </div>
           </div>
@@ -273,17 +288,17 @@ onMounted(async () => {
         </template>
 
         <p v-else class="hint">
-          选择一场已截止的选举，点击「计票公示」或「查看结果」。
+          Select a closed election and choose Tally &amp; publish or View results.
         </p>
       </div>
     </section>
 
-    <!-- 完整性 -->
+    
     <section class="card">
       <div class="card-head">
-        <h2 class="card-title">完整性校验</h2>
+        <h2 class="card-title">Integrity checks</h2>
         <span v-if="integrity" class="badge" :class="integrity.all_passed ? 'badge-open' : 'badge-closed'">
-          {{ integrity.all_passed ? '全部通过' : '存在不一致' }}
+          {{ integrity.all_passed ? 'All checks passed' : 'Inconsistencies found' }}
         </span>
       </div>
       <div class="card-body">
@@ -298,15 +313,15 @@ onMounted(async () => {
             </span>
           </li>
         </ul>
-        <p v-else class="hint">在选举列表中点击「完整性」运行校验。</p>
+        <p v-else class="hint">Use the Integrity button for an election to run the checks.</p>
       </div>
     </section>
 
-    <!-- 审计链 -->
+    
     <section class="card">
       <div class="card-head">
-        <h2 class="card-title">审计链</h2>
-        <button class="btn btn-ghost btn-sm" @click="verifyAudit">重新校验</button>
+        <h2 class="card-title">Audit chain</h2>
+        <button class="btn btn-ghost btn-sm" @click="verifyAudit">Re-verify</button>
       </div>
       <div class="card-body">
         <div v-if="audit">
@@ -314,12 +329,13 @@ onMounted(async () => {
             {{ audit.ok ? '✓' : '✕' }} {{ audit.message }}
           </div>
           <p class="hint mt-3">
-            共 {{ audit.length }} 条记录<template v-if="audit.first_bad_seq">
-              ，首条断裂 #{{ audit.first_bad_seq }}</template
-            >。哈希链只能<strong>检测</strong>篡改，不能阻止能重算整条链的攻击者。
+            {{ audit.length }} entries<template v-if="audit.first_bad_seq">
+              , first break at #{{ audit.first_bad_seq }}</template
+            >. The hash chain can only <strong>detect</strong> tampering; it cannot stop an
+            attacker who recomputes the whole chain.
           </p>
         </div>
-        <p v-else class="hint">正在校验…</p>
+        <p v-else class="hint">Verifying…</p>
       </div>
     </section>
   </div>

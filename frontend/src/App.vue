@@ -16,8 +16,8 @@ function logout() {
 }
 
 const navItems = [
-  { to: '/elections', label: '选举' },
-  { to: '/receipt', label: '凭证核验' },
+  { to: '/elections', label: 'Elections' },
+  { to: '/receipt', label: 'Verify receipt' },
 ]
 </script>
 
@@ -25,14 +25,14 @@ const navItems = [
   <header class="topbar">
     <div class="container topbar-inner">
       <router-link to="/elections" class="brand">
-        <img :src="hkmuLogo" class="brand-logo" alt="香港都會大學 HKMU" />
+        <img :src="hkmuLogo" class="brand-logo" alt="Hong Kong Metropolitan University (HKMU)" />
         <span class="brand-text">
-          <strong>选举管理与投票系统</strong>
-          <small>COMP 3500SEF · 小组项目</small>
+          <strong>Election Management &amp; Voting System</strong>
+          <small>COMP 3500SEF · Group project</small>
         </span>
       </router-link>
 
-      <nav class="nav" aria-label="主导航">
+      <nav class="nav" aria-label="Main navigation">
         <router-link
           v-for="item in navItems"
           :key="item.to"
@@ -48,7 +48,7 @@ const navItems = [
           class="nav-link"
           :class="{ active: route.path.startsWith('/admin') }"
         >
-          管理台
+          Admin
         </router-link>
       </nav>
 
@@ -58,9 +58,9 @@ const navItems = [
             <span class="who-name">{{ auth.user.name || auth.user.student_id }}</span>
             <span class="badge badge-muted badge-plain">{{ auth.user.role }}</span>
           </span>
-          <button class="btn btn-ghost btn-sm" @click="logout">退出</button>
+          <button class="btn btn-ghost btn-sm" @click="logout">Sign out</button>
         </template>
-        <router-link v-else to="/login" class="btn btn-sm">登录</router-link>
+        <router-link v-else to="/login" class="btn btn-sm">Sign in</router-link>
       </div>
     </div>
   </header>
@@ -71,8 +71,8 @@ const navItems = [
 
   <footer class="site-footer">
     <div class="container footer-inner">
-      <span>COMP 3500SEF / 8500SEF 软件工程 · 学生课程项目</span>
-      <span class="muted">本系统为课程作业，非香港都会大学官方系统</span>
+      <span>COMP 3500SEF / 8500SEF Software Engineering · Student project</span>
+      <span class="muted">Course assignment — not an official HKMU system</span>
     </div>
   </footer>
 </template>

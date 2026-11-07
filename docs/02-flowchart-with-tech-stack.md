@@ -1,333 +1,283 @@
-# 系统流程与技术栈详图
+# System Flows and Technology Stack
 
-> COMP 3500SEF / 8500SEF — 选举管理与投票系统
-> 后端已定：**Python + FastAPI**
->
-> 本文的图**在每个环节标注了所用的语言 / 框架 / 组件**，可直接放进报告的「设计」章节，
-> 也适合在进度评审时讲解。
+> COMP 3500SEF / 8500SEF — Software Engineering, group project
+> Topic: Election Management and Voting System
+
+Five diagrams at increasing levels of detail. The first two are for a general audience, the last
+three for developers and for the architecture chapter.
 
 ---
 
-## 一、技术栈全景（按层标注语言）
+## 0. Overview: process and technology in one picture
 
 ```mermaid
 flowchart TB
-    subgraph L1["① 表示层 — 用户界面"]
-        direction LR
-        V1["选民端<br/>Vue 3 + TypeScript"]
-        V2["管理端<br/>Vue 3 + TypeScript"]
-        V3["图表<br/>ECharts 5"]
-    end
-
-    subgraph L2["② 用户通信层"]
-        direction LR
-        N1["Nginx<br/>静态资源 + 反向代理"]
-        N2["HTTP / REST + JSON<br/>AJAX: Axios"]
-        N3["SSE: EventSource<br/>text/event-stream"]
-    end
-
-    subgraph L3["③ 应用逻辑层 — Python 3.11+"]
+    subgraph BROWSER["In the browser (Vue 3 + TypeScript)"]
         direction TB
-        A1["FastAPI 路由层<br/>APIRouter"]
-        A2["Pydantic v2 模型<br/>请求 / 响应校验"]
-        A3["业务服务层<br/>投票 · 状态机 · 计票"]
-        A4["SQLAlchemy 2.0 (async)<br/>事务边界"]
+        L["Sign-in page<br/>student ID and password"]
+        E["Election list<br/>cards, status, turnout"]
+        B["Ballot page<br/>select and confirm"]
+        R["Receipt page<br/>code and verification"]
     end
 
-    subgraph L4["④ 数据层"]
-        direction LR
-        D1[("PostgreSQL 16<br/>唯一约束 · 事务")]
-        D2[("Redis 7<br/>会话 · 缓存 · Pub/Sub")]
+    subgraph SERVER["On the server (Python + FastAPI)"]
+        direction TB
+        AUTH["Authentication<br/>JWT and bcrypt"]
+        SVC["Business logic<br/>state machine, voting transaction<br/>tallying, audit chain"]
+        PUSH["Real-time push<br/>SSE, turnout only"]
     end
 
-    V1 --> N2
-    V2 --> N2
-    V3 --> V1
-    N2 --> A1
-    N3 -.-> A1
-    A1 --> A2
-    A2 --> A3
-    A3 --> A4
-    A4 --> D1
-    A3 --> D2
-    N1 --> N2
+    subgraph DATA["Data"]
+        direction TB
+        PG[("PostgreSQL<br/>ballots, vote records, receipts<br/>audit log")]
+        RD[("Redis<br/>sessions and pub/sub")]
+    end
+
+    L -->|POST /auth/login| AUTH
+    E -->|GET /elections| SVC
+    B -->|POST /votes| SVC
+    R -->|GET /receipts/code| SVC
+    PUSH -.->|turnout updates| E
+    AUTH --> PG
+    SVC --> PG
+    SVC --> RD
+    PUSH --> RD
 ```
+
+Reading order: the voter acts in the browser, the request reaches the server over HTTPS, the
+business logic runs inside a database transaction, and results come back over REST or SSE.
 
 ---
 
-## 〇、总览图（流程 + 技术栈合一，汇报 / 发给开发者用）
-
-> 对应渲染产物：`diagrams/detailed/00-overview.png` 与 `.svg`。
-> 这张图把 5 个阶段与每段用的技术放在一起，适合一页讲完整个系统。
+## 1. Technology stack by layer
 
 ```mermaid
----
-title: 选举管理与投票系统 — 系统流程与技术栈（前端 Vue 3 + TypeScript ｜ 后端 Python + FastAPI）
----
-flowchart TB
-    classDef fe fill:#e8efff,stroke:#2f5bd7,stroke-width:2px,color:#1b2438
-    classDef be fill:#e9f7ef,stroke:#0f9d58,stroke-width:2px,color:#1b2438
-    classDef db fill:#fdf0e3,stroke:#d97706,stroke-width:2px,color:#1b2438
-    classDef err fill:#fdecec,stroke:#d64545,stroke-width:1.5px,color:#a32b2b
-
-    subgraph P1["① 登录（前端 Vue 3 + TypeScript → 后端 Python + FastAPI）"]
-        direction LR
-        A1["输入学号与密码<br/>Vue 3 + TypeScript"]:::fe
-        A2["POST /auth/login<br/>Axios"]:::fe
-        A3["Pydantic 校验<br/>bcrypt 验密"]:::be
-        A4["签发 JWT<br/>python-jose"]:::be
-        A5["查 users 表<br/>SQLAlchemy async + asyncpg"]:::db
-        A1 --> A2 --> A3
-        A3 --> A5
-        A3 --> A4
+flowchart LR
+    subgraph U["User layer"]
+        U1["Voter<br/>student"]
+        U2["Administrator"]
+        U3["Auditor"]
     end
 
-    subgraph P2["② 选择选举"]
-        direction LR
-        B1["GET /elections<br/>Axios + Bearer JWT"]:::fe
-        B2["Depends 校验 JWT<br/>FastAPI"]:::be
-        B3["查名册内选举<br/>asyncpg"]:::db
-        B4["渲染选举卡片<br/>Pinia + Vue Router"]:::fe
-        B1 --> B2 --> B3 --> B4
+    subgraph P["Presentation layer, in the browser"]
+        P1["Vue 3 component<br/>TypeScript"]
+        P2["Pinia state<br/>session and elections"]
+        P3["Vue Router<br/>navigation"]
+        P4["ECharts<br/>result charts"]
+        P5["EventSource<br/>SSE subscription"]
     end
 
-    subgraph P3["③ 投票校验"]
-        direction LR
-        C1["选候选人<br/>Vue 组件"]:::fe
-        C2["POST /votes<br/>Axios"]:::fe
-        C3{"选举状态<br/>== open ?"}:::be
-        C4{"在名册内<br/>且 eligible ?"}:::be
-        X["拒绝并回滚<br/>409 ELECTION_NOT_OPEN<br/>409 DUPLICATE_VOTE"]:::err
-        C1 --> C2 --> C3 -->|是| C4
-        C3 -->|否| X
-        C4 -->|否| X
+    subgraph C["Communication layer"]
+        C1["Axios<br/>REST over HTTPS"]
+        C2["FastAPI router<br/>request validation"]
+        C3["Pydantic v2<br/>request and response models"]
+        C4["JWT<br/>authentication dependency"]
     end
 
-    subgraph P4["④ 写入（单事务 · SQLAlchemy 2.0）"]
-        direction LR
-        C5["INSERT ballots<br/>anon_id + AES-GCM 密文"]:::db
-        C6["INSERT votes_log<br/>UNIQUE 约束仲裁"]:::db
-        C7["生成 receipt 凭证码"]:::be
-        C8["写审计日志（哈希链）"]:::be
-        C9["COMMIT"]:::db
-        C5 --> C6 --> C7 --> C8 --> C9
+    subgraph A["Application layer"]
+        A1["Voting service<br/>cast_ballot"]
+        A2["State machine<br/>scheduled, open, closed, published"]
+        A3["Tally strategies<br/>FPTP, IRV"]
+        A4["Audit chain<br/>append and verify"]
+        A5["Result service<br/>aggregate and digest"]
     end
 
-    subgraph P5["⑤ 核验与实时"]
-        direction LR
-        D1["GET /receipts/:code<br/>Axios"]:::fe
-        D2["仅返回 counted<br/>不回传选择内容"]:::be
-        D3["EventSource 订阅<br/>/events/turnout"]:::fe
-        D4["StreamingResponse<br/>SSE 推投票率"]:::be
-        D5["Redis Pub/Sub<br/>多实例广播"]:::db
-        D1 --> D2
-        D3 --> D4 --> D5
+    subgraph D["Data layer"]
+        D1["SQLAlchemy 2.0<br/>async ORM"]
+        D2[("PostgreSQL 16<br/>transactions and constraints")]
+        D3[("Redis 7<br/>cache and pub/sub")]
+        D4["Alembic<br/>migrations"]
     end
 
-    P1 --> P2 --> P3 --> P4 --> P5
-    C4 -->|是| C5
+    U1 --> P1
+    U2 --> P1
+    U3 --> P1
+    P1 --> P2
+    P1 --> P3
+    P1 --> P4
+    P1 --> P5
+    P2 --> C1
+    P3 --> C1
+    C1 -->|HTTPS| C2
+    C2 --> C3
+    C2 --> C4
+    C2 --> A1
+    C2 --> A2
+    C2 --> A5
+    A1 --> A2
+    A1 --> A4
+    A1 --> A3
+    A5 --> A3
+    A1 --> D1
+    A4 --> D1
+    D1 --> D2
+    A5 --> D3
+    C4 --> D3
+    D4 -.-> D2
 ```
 
-## 二、投票主流程（逐步标注语言与框架）
+Reading order: from users down to the database, every level names the concrete language and
+framework, so you can answer "what is used for what".
 
-这是**一张图讲清整个系统怎么工作**：从浏览器点击到数据落库，每一步都标明用什么技术。
+---
+
+## 2. Main voting flow, step by step
 
 ```mermaid
 flowchart TD
-    Start([选民打开浏览器]) --> S1
+    S1["Voter opens the site<br/>Vue 3"]
+    S2["Sign in<br/>Vue form to Axios to FastAPI /auth/login"]
+    S3["Server verifies the password<br/>bcrypt, then issues a JWT"]
+    S4["Frontend stores the token<br/>Pinia plus localStorage"]
+    S5["Load the election list<br/>GET /elections, filtered by voter roll"]
+    S6["Select an election<br/>route to the ballot page"]
+    S7["Server checks the state<br/>state machine: is it open"]
+    S8["Load candidates<br/>Pydantic response model"]
+    S9["Select a candidate<br/>component state"]
+    S10["Confirm<br/>second step to avoid a misclick"]
+    S11["POST /votes<br/>single transaction begins"]
+    S12{"Status open, on the roll,<br/>not already voted?"}
+    S13["Rejected<br/>409 or 403 with a message"]
+    S14["Write the ballot and the vote record<br/>unique constraint arbitrates"]
+    S15["Create the receipt<br/>and append the audit entry"]
+    S16["Commit<br/>return the receipt code"]
+    S17["Show the receipt<br/>copy button"]
+    S18["Optional verification<br/>GET /receipts/code"]
+    S19["Turnout updates<br/>SSE pushes the aggregate only"]
+    S20(["Done"])
 
-    subgraph FE1["前端 · Vue 3 + TypeScript"]
-        S1["输入学号与密码<br/>Vue 表单 + 前端校验"]
-        S1 --> S2["Axios POST /api/v1/auth/login"]
-    end
-
-    subgraph BE1["后端 · FastAPI"]
-        S2 --> S3["Pydantic 校验请求体"]
-        S3 --> S4["查询 voter_roll 表<br/>SQLAlchemy async + asyncpg"]
-        S4 --> S5{"bcrypt 校验密码"}
-        S5 -->|失败| S6["返回 401<br/>统一错误码"]
-        S5 -->|成功| S7["签发 JWT<br/>python-jose"]
-    end
-
-    S6 --> Err1([前端显示错误提示])
-    S7 --> S8
-
-    subgraph FE2["前端 · Vue 3"]
-        S8["存 token 到 Pinia<br/>跳转选举列表页"]
-        S8 --> S9["Axios GET /api/v1/elections<br/>带上 Authorization 头"]
-    end
-
-    subgraph BE2["后端 · FastAPI"]
-        S9 --> S10["依赖注入校验 JWT<br/>Depends(get_current_user)"]
-        S10 --> S11["SQLAlchemy 查询<br/>该选民名册内的选举"]
-        S11 --> S12["Pydantic 序列化<br/>返回 ElectionResponse 列表"]
-    end
-
-    S12 --> S13
-
-    subgraph FE3["前端 · Vue 3"]
-        S13["渲染选举卡片<br/>显示状态徽章与投票率"]
-        S13 --> S14["点击选举 → Vue Router 跳转"]
-        S14 --> S15["展示候选人<br/>单选 / 点击排序"]
-        S15 --> S16["确认弹窗<br/>Vue 组件"]
-        S16 --> S17["Axios POST /api/v1/elections/:id/votes"]
-    end
-
-    subgraph BE3["后端 · FastAPI — 单事务内完成"]
-        S17 --> S18["Pydantic 校验 choice 合法"]
-        S18 --> S19["BEGIN 事务<br/>SQLAlchemy AsyncSession"]
-        S19 --> S20{"选举状态 == open?<br/>状态机校验"}
-        S20 -->|否| S21["409 ELECTION_NOT_OPEN"]
-        S20 -->|是| S22{"选民在名册且未投票?"}
-        S22 -->|否| S23["403 FORBIDDEN"]
-        S22 -->|是| S24["INSERT ballots<br/>仅存 anon_id + 加密选择"]
-        S24 --> S25["INSERT votes_log<br/>UNIQUE 约束仲裁"]
-        S25 --> S26{"唯一约束冲突?"}
-        S26 -->|是| S27["ROLLBACK<br/>409 DUPLICATE_VOTE"]
-        S26 -->|否| S28["INSERT receipts<br/>生成凭证码"]
-        S28 --> S29["UPDATE voter_roll<br/>has_voted = true"]
-        S29 --> S30["写入审计日志<br/>哈希链：prev_hash + 内容"]
-        S30 --> S31["COMMIT"]
-    end
-
-    S21 --> Err2([前端友好提示])
-    S23 --> Err2
-    S27 --> Err2
-
-    S31 --> S32
-
-    subgraph FE4["前端 · Vue 3"]
-        S32["展示凭证码<br/>复制按钮 + 截图提示"]
-        S32 --> S33["Axios GET /api/v1/receipts/:code<br/>可选核验"]
-        S32 --> S34["EventSource 订阅<br/>/api/v1/events/turnout"]
-    end
-
-    subgraph BE4["后端 · FastAPI"]
-        S33 --> S35["查询 receipts + ballots<br/>仅返回 counted 状态"]
-        S34 --> S36["StreamingResponse<br/>SSE 推送投票率"]
-        S36 --> S37[("Redis Pub/Sub<br/>多实例广播")]
-    end
-
-    S35 --> S38(["显示：已计入，未显示选择"])
-    S36 --> S39(["前端图表实时更新"])
+    S1 --> S2 --> S3 --> S4 --> S5 --> S6 --> S7
+    S7 -->|not open| S13
+    S7 -->|open| S8 --> S9 --> S10 --> S11 --> S12
+    S12 -->|no| S13
+    S12 -->|yes| S14 --> S15 --> S16 --> S17 --> S18 --> S20
+    S16 -.-> S19
+    S13 --> S8
 ```
 
 ---
 
-## 三、投票事务的内部时序（后端细节）
+## 3. Inside the vote transaction
 
-> 这一节对应报告里的「设计」与「事务一致性」，是评审最容易追问的地方。
+This is the diagram the architecture chapter uses. It shows exactly what the backing transaction
+does and where the guarantees come from.
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor V as 选民（浏览器）
-    participant FE as Vue 3 + TypeScript
-    participant RT as FastAPI 路由层
-    participant SC as 业务服务（Python）
-    participant DB as PostgreSQL 16
+    actor V as Voter
+    participant FE as Vue 3
+    participant RT as FastAPI router
+    participant SV as Voting service
+    participant DB as PostgreSQL
 
-    V->>FE: 点击「确认投票」
-    FE->>FE: Vue 校验：至少选 1 项
-    FE->>RT: POST /api/v1/elections/1/votes<br/>Authorization: Bearer JWT
-    RT->>RT: Pydantic 校验 VoteRequest
-
-    RT->>SC: cast_ballot(user, election_id, choice)
-    SC->>DB: BEGIN TRANSACTION
-    SC->>DB: SELECT status FROM elections WHERE id=1
-    DB-->>SC: status = 'open'
-
-    alt 状态不是 open
-        SC-->>RT: raise ElectionNotOpen
-        RT-->>FE: 409 ELECTION_NOT_OPEN
-        FE-->>V: 「该选举已截止」
-    else 状态为 open
-        SC->>DB: SELECT eligible FROM voter_roll
-        DB-->>SC: eligible = true（在名册内且有资格）
-        SC->>SC: AES-256-GCM 加密选择<br/>（HKDF-SHA256 派生密钥）
-        SC->>DB: INSERT INTO ballots(anon_id, choice_enc)
-        SC->>DB: INSERT INTO votes_log(position_id,user_id)<br/>⚡ UNIQUE 约束在此仲裁
-
-        alt 唯一约束冲突（并发/重复）
-            DB-->>SC: IntegrityError
-            SC->>DB: ROLLBACK
-            SC-->>RT: raise DuplicateVote
-            RT-->>FE: 409 DUPLICATE_VOTE
-            FE-->>V: 「您已完成投票」
-        else 插入成功
-            SC->>DB: INSERT INTO receipts(code, ballot_id)
-            SC->>DB: UPDATE voter_roll SET has_voted=true
-            SC->>DB: INSERT INTO audit_log<br/>(prev_hash,op,payload,hash)
-            SC->>DB: COMMIT
-            SC-->>RT: receipt_code
-            RT-->>FE: 201 + {receiptCode}
-            FE-->>V: 显示凭证码
+    V->>FE: press confirm
+    FE->>RT: POST /api/v1/elections/id/votes with JWT
+    RT->>RT: decode JWT, load the user
+    RT->>RT: Pydantic validates the body
+    RT->>SV: cast_ballot user, election_id, choice
+    SV->>DB: BEGIN transaction
+    SV->>DB: load the election row
+    DB-->>SV: status and tally method
+    SV->>SV: state machine check
+    alt not open
+        SV-->>RT: ElectionNotOpen
+        RT-->>FE: 409 with a message
+    else open
+        SV->>DB: load the voter roll entry
+        DB-->>SV: eligible flag
+        SV->>DB: insert into ballots, anonymous
+        DB-->>SV: ballot id
+        SV->>DB: insert into votes_log
+        alt unique constraint violated
+            DB-->>SV: IntegrityError
+            SV->>DB: ROLLBACK
+            SV-->>RT: duplicate vote
+            RT-->>FE: 409 already voted
+        else inserted
+            SV->>DB: insert the receipt
+            SV->>DB: update voter_roll
+            SV->>DB: append the audit entry with the previous hash
+            SV->>DB: COMMIT
+            SV-->>RT: receipt code
+            RT-->>FE: 201 with the code
+            FE-->>V: show the receipt
         end
     end
 ```
 
+The guarantee comes from three places, in this order:
+
+1. **The state machine** decides whether voting is allowed at all.
+2. **The unique constraint** decides whether this voter has already voted; no application-level
+   check is involved.
+3. **The audit chain** makes after-the-fact tampering detectable.
+
 ---
 
-## 四、部署拓扑（物理视图）
+## 4. Deployment topology
 
 ```mermaid
-flowchart LR
-    subgraph Client["客户端"]
-        BROWSER["浏览器<br/>Chrome / Safari / Edge"]
+flowchart TB
+    subgraph CLIENT["Client"]
+        B1["Browser<br/>Vue 3 single-page application"]
     end
 
-    subgraph Server["服务器（Docker Compose）"]
-        NGINX["Nginx 容器<br/>:80 / :443<br/>静态文件 + 反代"]
-        subgraph APP["应用容器"]
-            UV["Uvicorn<br/>ASGI 服务器"]
-            FA["FastAPI<br/>Python 3.11+"]
-        end
-        PG[("PostgreSQL 容器<br/>:5432")]
-        RD[("Redis 容器<br/>:6379")]
+    subgraph EDGE["Edge"]
+        N1["Nginx<br/>TLS termination and static files"]
     end
 
-    BROWSER -->|HTTPS| NGINX
-    NGINX -->|静态资源| BROWSER
-    NGINX -->|/api/*| UV
-    UV --> FA
-    FA -->|asyncpg :5432| PG
-    FA -->|redis-py :6379| RD
-    BROWSER -.->|SSE<br/>长连接| NGINX
+    subgraph APP["Application tier"]
+        A1["Uvicorn workers<br/>FastAPI"]
+        A2["Uvicorn workers<br/>FastAPI"]
+    end
+
+    subgraph DATATIER["Data tier"]
+        D1[("PostgreSQL<br/>primary")]
+        D2[("PostgreSQL<br/>read replica, optional")]
+        R1[("Redis<br/>sessions and pub/sub")]
+    end
+
+    B1 -->|HTTPS| N1
+    N1 -->|/api| A1
+    N1 -->|/api| A2
+    A1 --> D1
+    A2 --> D1
+    D1 -.->|streaming replication| D2
+    A1 --> R1
+    A2 --> R1
 ```
 
+For a single-machine demonstration, Nginx and the extra worker are omitted and everything runs
+locally; the diagram shows the target shape.
+
 ---
 
-## 五、技术选型速查表（讲给导师用）
+## 5. Quick reference for the presentation
 
-| 环节 | 语言 / 技术 | 为什么用它 |
+| Question | Answer |
+|---|---|
+| Frontend language | TypeScript, built with Vue 3 |
+| Backend language | Python 3.11, FastAPI |
+| Database | PostgreSQL 16, with SQLite fallback |
+| Cache | Redis 7, used for sessions and pub/sub |
+| How does real-time work | SSE, server push, one-way |
+| How is one vote per voter enforced | database unique constraint on position and user |
+| How is anonymity preserved | ballots and voter roll are separate tables with no linking key |
+| What are the tally methods | FPTP now, IRV added by strategy pattern |
+| How is tampering detected | append-only audit chain with hashes |
+| How many tests | 44, including concurrency and tamper cases |
+
+---
+
+## 6. Where each member plugs in
+
+| Member | Owns | Points at in this document |
 |---|---|---|
-| 用户界面 | **TypeScript + Vue 3** | 类型安全 + 组件化，适合表单与列表 |
-| 构建工具 | **Vite 5** | 冷启动快，HMR 体验好 |
-| 状态管理 | **Pinia** | 管理登录态与选举数据，比 Vuex 简洁 |
-| 图表 | **ECharts 5** | 计票柱状图、逐轮淘汰可视化 |
-| HTTP 调用 | **Axios** | 拦截器统一处理 401 / 错误码 |
-| 实时推送 | **EventSource（SSE）** | 服务器单向推投票率，自带重连 |
-| 后端框架 | **Python 3.11 + FastAPI** | 异步、自动 OpenAPI、Pydantic 契约即文档 |
-| 请求校验 | **Pydantic v2** | 请求/响应模型即接口契约 |
-| 数据访问 | **SQLAlchemy 2.0 async** | 显式事务边界，能精确控制 COMMIT/ROLLBACK |
-| 数据库驱动 | **asyncpg** | PostgreSQL 异步驱动，性能好 |
-| 数据库迁移 | **Alembic** | schema 版本化，团队协作必需 |
-| 主数据库 | **PostgreSQL 16** | **唯一约束**是"一人一票"的最终保证 |
-| 缓存 | **Redis 7** | 会话 + 结果缓存 + SSE 多实例 Pub/Sub |
-| 鉴权 | **python-jose + bcrypt** | JWT 签发与密码哈希（bcrypt 直接调用） |
-| 测试 | **pytest + pytest-asyncio + httpx** | 单元测试 + 异步接口测试 |
-| 容器 | **Docker Compose** | 一条命令起 PostgreSQL + Redis |
-
----
-
-## 六、给成员的分工落点（对应 7 人分工表）
-
-| 成员 | 负责环节 | 用到的语言/技术 | 产出文件 |
-|---|---|---|---|
-| 1 | 选民端页面 | TypeScript + Vue 3 + Pinia | `frontend/src/views/Voter*` |
-| 2 | 管理端页面 | TypeScript + Vue 3 + ECharts | `frontend/src/views/Admin*` |
-| 3 | 认证与权限 | Python + FastAPI + python-jose | `backend/api/auth.py` |
-| 4 | 选举与投票 | Python + FastAPI + SQLAlchemy | `backend/api/elections.py` |
-| 5 | 数据库设计 | PostgreSQL + Alembic | `backend/db/`、`migrations/` |
-| 6 | 功能与界面测试 | 手测 + Playwright（可选） | `tests/e2e/` |
-| 7 | 接口与集成测试 | pytest + pytest-asyncio + httpx | `tests/api/` |
+| 1 | Process and planning | sections 0 and 2 |
+| 2 | Requirements | sections 2 and 3 |
+| 3 | Modelling | sections 3 and 4 |
+| 4 | Architecture | sections 1, 4 and 5 |
+| 5 | Backend implementation | sections 1 and 3 |
+| 6 | Frontend implementation | sections 0 and 2 |
+| 7 | Testing and evolution | sections 3 and 5 |
